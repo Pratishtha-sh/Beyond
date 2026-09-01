@@ -9,7 +9,7 @@
   line-height: 1.5;
   font-weight: 400;
   color: #24343b;
-  background-color: #fffaf3;
+  background-color: #fef9f4;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -20,10 +20,12 @@
   font-family: 'Playfair Display', Georgia, serif;
 }
 
+html,
 body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
+  overflow-x: hidden;
 }
 
 * {
@@ -35,6 +37,132 @@ body {
 }
 
 ::selection {
-  background: #dfeefc;
+  background: #f9c6d0;
   color: #24343b;
+}
+
+.itinerary-shell {
+  background: linear-gradient(180deg, #eaf5ee 0%, #f9f6ef 100%);
+}
+
+.hero-stripes {
+  background: repeating-linear-gradient(
+    45deg,
+    #92c9b1,
+    #92c9b1 18px,
+    #b3e0d2 18px,
+    #b3e0d2 36px
+  );
+}
+
+.cloud-bg {
+  background: linear-gradient(180deg, rgba(234, 245, 238, 0.96), rgba(166, 215, 191, 0.9));
+}
+
+.cloud-bg::before,
+.cloud-bg::after {
+  content: "";
+  position: absolute;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.7);
+  box-shadow: 30px 15px 0 8px rgba(255, 255, 255, 0.42), -25px 20px 0 12px rgba(255, 255, 255, 0.38);
+  animation: cloudFloat 18s ease-in-out infinite alternate;
+}
+
+.cloud-bg::before {
+  width: 140px;
+  height: 40px;
+  left: 12%;
+  top: 22%;
+}
+
+.cloud-bg::after {
+  width: 110px;
+  height: 36px;
+  right: 18%;
+  top: 30%;
+  animation-delay: 1.4s;
+}
+
+@keyframes cloudFloat {
+  from {
+    transform: translateX(-8px) translateY(0);
+  }
+  to {
+    transform: translateX(12px) translateY(-8px);
+  }
+}
+
+/* Carousel slide transition */
+.carousel-slide-enter {
+  opacity: 0;
+  transform: scale(0.95);
+}
+.carousel-slide-enter-active {
+  opacity: 1;
+  transform: scale(1);
+  transition: opacity 0.5s ease, transform 0.5s ease;
+}
+
+/* ── Slot Card Strip (thin sleek time-of-day bar) ─────────────── */
+.slot-card-strip {
+  display: flex;
+  gap: 8px;
+  padding: 4px;
+  border-radius: 12px;
+  background: #1e3e30;
+  height: 40px;
+  align-items: center;
+}
+
+.slot-card-panel {
+  flex: 1;
+  height: 100%;
+  overflow: hidden;
+  cursor: pointer;
+  border-radius: 8px;
+  transition: flex 0.4s cubic-bezier(0.4, 0, 0.2, 1), background 0.3s, border-color 0.3s;
+  background: #1e3e30;
+  border: 1px solid #2d5a47;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 0 12px;
+}
+
+.slot-card-panel:hover,
+.slot-card-panel.active {
+  flex: 2.5;
+  background: #264d3b;
+  border-color: #448065;
+}
+
+.slot-card-label {
+  text-align: center;
+  transform: none;
+  transition: color 0.3s, font-size 0.3s;
+  text-transform: uppercase;
+  color: #8bc4a2;
+  letter-spacing: 0.1em;
+  font-weight: 700;
+  font-size: 0.8rem;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.slot-card-panel:hover .slot-card-label,
+.slot-card-panel.active .slot-card-label {
+  color: #ffffff;
+  font-size: 0.85rem;
+}
+
+/* fadeIn for expanded slot details */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate-fadeIn {
+  animation: fadeIn 0.3s ease-out;
 }

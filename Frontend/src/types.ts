@@ -9,11 +9,24 @@ export interface Destination {
 
 export interface ActivityItem {
   place: string;
-  time: string;
+  time?: string;
   duration: string;
   category: string;
   description?: string;
   tips: string;
+  fun_fact?: string;
+  image?: string;
+}
+
+export interface SwapAlternative {
+  name: string;
+  address: string;
+  rating?: number;
+  place_id: string;
+  description?: string;
+  tips?: string;
+  fun_fact?: string;
+  image?: string;
 }
 
 export interface DayPlan {
@@ -36,6 +49,14 @@ export interface TripPlanResponse {
     party_type: string;
   };
   summary: string;
+  overview?: string;
+  fun_facts?: string[];
+  must_try_food?: string[];
+  hidden_gems?: string[];
+  local_culture?: string;
+  travel_hacks?: string[];
+  budget_info?: string;
+  places_covered?: string[];
   days: DayPlan[];
 }
 

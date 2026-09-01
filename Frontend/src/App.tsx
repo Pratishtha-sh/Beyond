@@ -1,10 +1,17 @@
 import { AnimatePresence, motion } from 'framer-motion';
-import { Compass, Sparkles, Map, MoonStar, SunMedium } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { ArrowRight, BrainCircuit, Calendar, CheckCircle2, Clock, CloudSun, Compass, Heart, Map, MapPin, Plus, RefreshCw, Send, Sparkles, Star, Trash2, Users, Wallet, Wand2, X } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
+import BuildTripPage from './components/BuildTripPage';
+import Carousel from './components/Carousel';
 import { destinations } from './data/destinations';
-import { healthCheck, planTrip } from './services/api';
-import type { DayPlan, Destination, TripPlanResponse, TripWizardValues } from './types';
+import logoImg from './data/doodles/logo.png';
+import rajasthanImg from './data/images/rajasthan/rajasthan.jpg';
+import kerelaImg from './data/images/kerela.jpg';
+import goaImg from './data/images/Goa/goa.avif';
+import { addActivity, fetchSwapAlternatives } from './services/api';
+import { healthCheck, planTrip, planTripGeneral } from './services/api';
+import type { ActivityItem, DayPlan, Destination, SwapAlternative, TripPlanResponse, TripWizardValues } from './types';
 
 const initialValues: TripWizardValues = {
   destination: 'Rajasthan',
@@ -15,8 +22,16 @@ const initialValues: TripWizardValues = {
   partyType: 'family',
 };
 
+const sanitizeText = (value?: string | null): string => {
+  if (!value) return '';
+
+  return String(value)
+    .replace(/[\p{Extended_Pictographic}\uFE0F\u200D]/gu, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+};
+
 function App() {
-  const [darkMode, setDarkMode] = useState(false);
   const [selectedDestination, setSelectedDestination] = useState<Destination | null>(destinations[0]);
   const [isWizardOpen, setIsWizardOpen] = useState(false);
   const [step, setStep] = useState(0);
@@ -26,10 +41,6 @@ function App() {
   const [backendReady, setBackendReady] = useState<boolean | null>(null);
   const navigate = useNavigate();
   const location = useLocation();
-
-  useEffect(() => {
-    document.documentElement.classList.toggle('dark', darkMode);
-  }, [darkMode]);
 
   useEffect(() => {
     void healthCheck().then(setBackendReady);
@@ -57,7 +68,7 @@ function App() {
   const handleSubmit = async () => {
     setIsLoading(true);
     try {
-      const suggestion = await planTrip(values);
+      const suggestion = await planTripGeneral(values);
       setItinerary(suggestion);
       window.localStorage.setItem('beyond-itinerary', JSON.stringify(suggestion));
       setIsWizardOpen(false);
@@ -95,7 +106,7 @@ function App() {
             <input
               value={values.destination}
               onChange={(event) => setValues((prev) => ({ ...prev, destination: event.target.value }))}
-              className="w-full rounded-2xl border-0 bg-[#FAF6F0] dark:bg-slate-850 px-6 py-4 outline-none text-lg text-slate-800 dark:text-slate-100 placeholder-slate-400 font-semibold focus:ring-2 focus:ring-slate-300 dark:focus:ring-slate-700 transition-all border-solid"
+              className="w-full border-2 border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-850 px-5 py-3 outline-none text-lg text-slate-800 dark:text-slate-100 placeholder-slate-400 font-semibold focus:border-[#2d5a47] dark:focus:border-slate-400 transition-all rounded-none"
               placeholder="e.g. Rajasthan, Kerala backwaters..."
             />
             <div className="flex flex-wrap gap-2">
@@ -103,7 +114,7 @@ function App() {
                 <button
                   key={dest}
                   onClick={() => setValues((prev) => ({ ...prev, destination: dest }))}
-                  className={`rounded-full px-4 py-2 text-sm font-medium border border-solid border-slate-200 dark:border-slate-700 transition-all cursor-pointer ${values.destination === dest ? 'bg-[#0B1528] text-white border-[#0B1528] dark:bg-slate-100 dark:text-slate-900 dark:border-slate-100' : 'bg-white/85 text-slate-700 hover:bg-slate-100 dark:bg-slate-900/60 dark:text-slate-300 dark:hover:bg-slate-800'}`}
+                  className={`px-4 py-2 text-sm font-semibold border-2 transition-all cursor-pointer rounded-none ${values.destination === dest ? 'bg-[#2d5a47] text-white border-[#2d5a47]' : 'bg-slate-50 text-slate-700 border-slate-300 hover:bg-slate-100 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700'}`}
                 >
                   {dest === 'Himachal Pradesh' ? 'Himachal' : dest}
                 </button>
@@ -118,27 +129,27 @@ function App() {
               type="date"
               value={values.tripStartDate}
               onChange={(event) => setValues((prev) => ({ ...prev, tripStartDate: event.target.value }))}
-              className="w-full rounded-2xl border-0 bg-[#FAF6F0] dark:bg-slate-850 px-6 py-4 outline-none text-lg text-slate-800 dark:text-slate-100 font-semibold focus:ring-2 focus:ring-slate-300 dark:focus:ring-slate-700 transition-all border-solid"
+              className="w-full border-2 border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-850 px-5 py-3 outline-none text-lg text-slate-800 dark:text-slate-100 font-semibold focus:border-[#2d5a47] dark:focus:border-slate-400 transition-all rounded-none"
             />
           </div>
         );
       case 2:
         return (
-          <div className="flex flex-col items-center gap-6">
-            <div className="w-full rounded-3xl bg-[#FAF6F0] dark:bg-slate-850 p-6 flex items-center justify-between">
+          <div className="flex flex-col items-center gap-5">
+            <div className="w-full border-2 border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-850 p-5 flex items-center justify-between rounded-none">
               <button
                 onClick={() => setValues((prev) => ({ ...prev, days: Math.max(1, prev.days - 1) }))}
-                className="w-12 h-12 rounded-full bg-white dark:bg-slate-700 shadow-sm flex items-center justify-center text-2xl font-bold cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-600 transition-all select-none border-0 text-slate-800 dark:text-slate-100"
+                className="w-10 h-10 border border-slate-300 bg-white dark:bg-slate-700 flex items-center justify-center text-xl font-bold cursor-pointer hover:bg-slate-100 select-none text-slate-800 dark:text-slate-100 rounded-none"
               >
                 -
               </button>
               <div className="text-center">
-                <p className="font-serif text-6xl font-bold text-slate-900 dark:text-slate-100">{values.days}</p>
-                <p className="text-[10px] uppercase tracking-[0.2em] text-slate-455 dark:text-slate-400 font-bold mt-1">DAYS</p>
+                <p className="font-serif text-5xl font-bold text-slate-900 dark:text-slate-100">{values.days}</p>
+                <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500 font-bold mt-1">DAYS</p>
               </div>
               <button
                 onClick={() => setValues((prev) => ({ ...prev, days: Math.min(14, prev.days + 1) }))}
-                className="w-12 h-12 rounded-full bg-white dark:bg-slate-700 shadow-sm flex items-center justify-center text-2xl font-bold cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-600 transition-all select-none border-0 text-slate-800 dark:text-slate-100"
+                className="w-10 h-10 border border-slate-300 bg-white dark:bg-slate-700 flex items-center justify-center text-xl font-bold cursor-pointer hover:bg-slate-100 select-none text-slate-800 dark:text-slate-100 rounded-none"
               >
                 +
               </button>
@@ -148,7 +159,7 @@ function App() {
                 <button
                   key={d}
                   onClick={() => setValues((prev) => ({ ...prev, days: d }))}
-                  className={`rounded-full px-5 py-2 text-sm font-medium border border-solid border-slate-200 dark:border-slate-700 transition-all cursor-pointer ${values.days === d ? 'bg-[#0B1528] text-white border-[#0B1528] dark:bg-slate-100 dark:text-slate-900 dark:border-slate-100' : 'bg-white/85 text-slate-700 hover:bg-slate-100 dark:bg-slate-900/60 dark:text-slate-300 dark:hover:bg-slate-800'}`}
+                  className={`px-4 py-1.5 text-sm font-semibold border-2 transition-all cursor-pointer rounded-none ${values.days === d ? 'bg-[#2d5a47] text-white border-[#2d5a47]' : 'bg-slate-50 text-slate-700 border-slate-300 hover:bg-slate-100 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700'}`}
                 >
                   {d}d
                 </button>
@@ -160,48 +171,47 @@ function App() {
         return (
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {[
-              { id: 'calm', name: 'Calm', desc: 'Quiet mornings, soft days', emoji: '🧘' },
-              { id: 'adventure', name: 'Adventure', desc: 'Treks, rapids, ridgelines', emoji: '🏔️' },
-            ]
-              .concat([
-                { id: 'historical-cultural', name: 'Historical & Cultural', desc: 'Forts, palaces, tombs, heritage', emoji: '🏛️' },
-                { id: 'spiritual', name: 'Spiritual', desc: 'Temples, shrines, sacred lore', emoji: '🙏' },
-              ])
-              .map((style) => {
-                const isSelected = values.travelStyle === style.id;
-                return (
-                  <button
-                    key={style.id}
-                    onClick={() => setValues((prev) => ({ ...prev, travelStyle: style.id as any }))}
-                    className={`rounded-3xl p-5 text-left border-0 transition-all cursor-pointer flex flex-col justify-between h-36 ${isSelected ? 'bg-[#0B1528] text-white shadow-lg dark:bg-slate-100 dark:text-slate-900' : 'bg-[#FAF6F0] dark:bg-slate-850 text-slate-800 dark:text-slate-100 hover:bg-slate-100/80 dark:hover:bg-slate-750'}`}
-                  >
-                    <span className="text-3xl">{style.emoji}</span>
-                    <div>
-                      <h4 className="font-semibold text-base">{style.name}</h4>
-                      <p className={`text-[11px] mt-1 leading-relaxed ${isSelected ? 'text-slate-300 dark:text-slate-700' : 'text-slate-500 dark:text-slate-405'}`}>{style.desc}</p>
-                    </div>
-                  </button>
-                );
-              })}
+              { id: 'calm', name: 'Calm & Relaxed', desc: 'Quiet mornings, scenic views & slow days', emoji: '🌿' },
+              { id: 'adventure-nature', name: 'Adventure & Nature', desc: 'Treks, rapids, ridgelines & wilderness', emoji: '⛰️' },
+              { id: 'historical-cultural', name: 'Historical & Cultural', desc: 'Forts, palaces, heritage & lore', emoji: '🏛️' },
+              { id: 'spiritual', name: 'Spiritual & Peace', desc: 'Temples, shrines, sacred ghats & calm', emoji: '🕉️' },
+              { id: 'party-nightlife', name: 'Party & Nightlife', desc: 'Beach shacks, live beats & sunset vibes', emoji: '🎉' },
+              { id: 'culinary-foodie', name: 'Foodie & Culinary', desc: 'Street food trails, iconic eats & cafes', emoji: '🍲' },
+            ].map((style) => {
+              const isSelected = values.travelStyle === style.id;
+              return (
+                <button
+                  key={style.id}
+                  onClick={() => setValues((prev) => ({ ...prev, travelStyle: style.id as any }))}
+                  className={`p-4 text-left border-2 transition-all cursor-pointer flex flex-col justify-between h-28 rounded-none ${isSelected ? 'bg-[#2d5a47] text-white border-[#2d5a47]' : 'bg-slate-50 border-slate-300 text-slate-800 hover:bg-slate-100 dark:bg-slate-850 dark:border-slate-700 dark:text-slate-100'}`}
+                >
+                  <span className="text-2xl">{style.emoji}</span>
+                  <div>
+                    <h4 className="font-semibold text-sm">{style.name}</h4>
+                    <p className={`text-[11px] mt-0.5 ${isSelected ? 'text-slate-200' : 'text-slate-500'}`}>{style.desc}</p>
+                  </div>
+                </button>
+              );
+            })}
           </div>
         );
       case 4:
         return (
-          <div className="flex flex-col items-center gap-6">
-            <div className="w-full rounded-3xl bg-[#FAF6F0] dark:bg-slate-850 p-6 flex items-center justify-between">
+          <div className="flex flex-col items-center gap-5">
+            <div className="w-full border-2 border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-850 p-5 flex items-center justify-between rounded-none">
               <button
                 onClick={() => setValues((prev) => ({ ...prev, numberOfPeople: Math.max(1, prev.numberOfPeople - 1) }))}
-                className="w-12 h-12 rounded-full bg-white dark:bg-slate-700 shadow-sm flex items-center justify-center text-2xl font-bold cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-600 transition-all select-none border-0 text-slate-800 dark:text-slate-100"
+                className="w-10 h-10 border border-slate-300 bg-white dark:bg-slate-700 flex items-center justify-center text-xl font-bold cursor-pointer hover:bg-slate-100 select-none text-slate-800 dark:text-slate-100 rounded-none"
               >
                 -
               </button>
               <div className="text-center">
-                <p className="font-serif text-6xl font-bold text-slate-900 dark:text-slate-100">{values.numberOfPeople}</p>
-                <p className="text-[10px] uppercase tracking-[0.2em] text-slate-455 dark:text-slate-400 font-bold mt-1">TRAVELLERS</p>
+                <p className="font-serif text-5xl font-bold text-slate-900 dark:text-slate-100">{values.numberOfPeople}</p>
+                <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500 font-bold mt-1">TRAVELLERS</p>
               </div>
               <button
                 onClick={() => setValues((prev) => ({ ...prev, numberOfPeople: Math.min(12, prev.numberOfPeople + 1) }))}
-                className="w-12 h-12 rounded-full bg-white dark:bg-slate-700 shadow-sm flex items-center justify-center text-2xl font-bold cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-600 transition-all select-none border-0 text-slate-800 dark:text-slate-100"
+                className="w-10 h-10 border border-slate-300 bg-white dark:bg-slate-700 flex items-center justify-center text-xl font-bold cursor-pointer hover:bg-slate-100 select-none text-slate-800 dark:text-slate-100 rounded-none"
               >
                 +
               </button>
@@ -211,7 +221,7 @@ function App() {
                 <button
                   key={n}
                   onClick={() => setValues((prev) => ({ ...prev, numberOfPeople: n }))}
-                  className={`rounded-full px-5 py-2 text-sm font-medium border border-solid border-slate-200 dark:border-slate-700 transition-all cursor-pointer ${values.numberOfPeople === n ? 'bg-[#0B1528] text-white border-[#0B1528] dark:bg-slate-100 dark:text-slate-900 dark:border-slate-100' : 'bg-white/85 text-slate-700 hover:bg-slate-100 dark:bg-slate-900/60 dark:text-slate-300 dark:hover:bg-slate-800'}`}
+                  className={`px-4 py-1.5 text-sm font-semibold border-2 transition-all cursor-pointer rounded-none ${values.numberOfPeople === n ? 'bg-[#2d5a47] text-white border-[#2d5a47]' : 'bg-slate-50 text-slate-700 border-slate-300 hover:bg-slate-100 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700'}`}
                 >
                   {n === 1 ? '1 (Solo)' : n === 2 ? '2 (Couple)' : n}
                 </button>
@@ -221,25 +231,25 @@ function App() {
         );
       case 5:
         return (
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-3 sm:grid-cols-2">
             {[
               { id: 'solo', name: 'Solo Explorer', desc: 'Just you and the open road', emoji: '👤' },
               { id: 'couple', name: 'Couple', desc: 'Romantic stays, cozy spots', emoji: '💕' },
               { id: 'friends', name: 'Friends', desc: 'Group fun, sights, and food', emoji: '🍻' },
-              { id: 'family', name: 'Family', desc: 'Kid-friendly pacing, cozy stays', emoji: '👪' },
-              { id: 'adventure-group', name: 'Adventure Group', desc: 'High energy, outdoor actions', emoji: '🧗' },
+              { id: 'family', name: 'Family', desc: 'Kid-friendly pacing', emoji: '👪' },
+              { id: 'adventure-group', name: 'Adventure Group', desc: 'High energy outdoor', emoji: '🧗' },
             ].map((party) => {
               const isSelected = values.partyType === party.id;
               return (
                 <button
                   key={party.id}
                   onClick={() => setValues((prev) => ({ ...prev, partyType: party.id as any }))}
-                  className={`rounded-3xl p-5 text-left border-0 transition-all cursor-pointer flex flex-col justify-between h-36 ${isSelected ? 'bg-[#0B1528] text-white shadow-lg dark:bg-slate-100 dark:text-slate-900' : 'bg-[#FAF6F0] dark:bg-slate-855 text-slate-800 dark:text-slate-100 hover:bg-slate-100/80 dark:hover:bg-slate-750'}`}
+                  className={`p-4 text-left border-2 transition-all cursor-pointer flex flex-col justify-between h-28 rounded-none ${isSelected ? 'bg-[#2d5a47] text-white border-[#2d5a47]' : 'bg-slate-50 border-slate-300 text-slate-800 hover:bg-slate-100 dark:bg-slate-850 dark:border-slate-700 dark:text-slate-100'}`}
                 >
-                  <span className="text-3xl">{party.emoji}</span>
+                  <span className="text-2xl">{party.emoji}</span>
                   <div>
-                    <h4 className="font-semibold text-base">{party.name}</h4>
-                    <p className={`text-[11px] mt-1 leading-relaxed ${isSelected ? 'text-slate-300 dark:text-slate-700' : 'text-slate-500 dark:text-slate-405'}`}>{party.desc}</p>
+                    <h4 className="font-semibold text-sm">{party.name}</h4>
+                    <p className={`text-[11px] mt-0.5 ${isSelected ? 'text-slate-200' : 'text-slate-500'}`}>{party.desc}</p>
                   </div>
                 </button>
               );
@@ -248,26 +258,26 @@ function App() {
         );
       case 6:
         return (
-          <div className="rounded-3xl bg-[#FAF6F0] dark:bg-slate-850 p-6 space-y-4">
-            <div className="flex justify-between items-center border-b border-solid border-slate-200/50 dark:border-slate-700/50 pb-3">
-              <span className="text-sm text-slate-550 dark:text-slate-400">Destination</span>
-              <span className="font-semibold text-slate-800 dark:text-slate-100">{values.destination}</span>
+          <div className="border-2 border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-850 p-5 space-y-3 rounded-none">
+            <div className="flex justify-between items-center border-b border-slate-200 dark:border-slate-700 pb-2">
+              <span className="text-xs text-slate-500 font-medium">Destination</span>
+              <span className="font-semibold text-slate-800 dark:text-slate-100 text-sm">{values.destination}</span>
             </div>
-            <div className="flex justify-between items-center border-b border-solid border-slate-200/50 dark:border-slate-700/50 pb-3">
-              <span className="text-sm text-slate-550 dark:text-slate-400">Start Date</span>
-              <span className="font-semibold text-slate-800 dark:text-slate-100">{values.tripStartDate}</span>
+            <div className="flex justify-between items-center border-b border-slate-200 dark:border-slate-700 pb-2">
+              <span className="text-xs text-slate-500 font-medium">Start Date</span>
+              <span className="font-semibold text-slate-800 dark:text-slate-100 text-sm">{values.tripStartDate}</span>
             </div>
-            <div className="flex justify-between items-center border-b border-solid border-slate-200/50 dark:border-slate-700/50 pb-3">
-              <span className="text-sm text-slate-550 dark:text-slate-400">Duration</span>
-              <span className="font-semibold text-slate-800 dark:text-slate-100">{values.days} Days</span>
+            <div className="flex justify-between items-center border-b border-slate-200 dark:border-slate-700 pb-2">
+              <span className="text-xs text-slate-500 font-medium">Duration</span>
+              <span className="font-semibold text-slate-800 dark:text-slate-100 text-sm">{values.days} Days</span>
             </div>
-            <div className="flex justify-between items-center border-b border-solid border-slate-200/50 dark:border-slate-700/50 pb-3">
-              <span className="text-sm text-slate-550 dark:text-slate-400">Travel Style</span>
-              <span className="font-semibold capitalize text-slate-800 dark:text-slate-100">{values.travelStyle.replace('-', ' ')}</span>
+            <div className="flex justify-between items-center border-b border-slate-200 dark:border-slate-700 pb-2">
+              <span className="text-xs text-slate-500 font-medium">Travel Style</span>
+              <span className="font-semibold capitalize text-slate-800 dark:text-slate-100 text-sm">{values.travelStyle.replace('-', ' ')}</span>
             </div>
-            <div className="flex justify-between items-center pb-1">
-              <span className="text-sm text-slate-550 dark:text-slate-400">Travellers</span>
-              <span className="font-semibold text-slate-800 dark:text-slate-100">{values.numberOfPeople} ({values.partyType})</span>
+            <div className="flex justify-between items-center">
+              <span className="text-xs text-slate-500 font-medium">Travellers</span>
+              <span className="font-semibold text-slate-800 dark:text-slate-100 text-sm">{values.numberOfPeople} ({values.partyType})</span>
             </div>
           </div>
         );
@@ -277,59 +287,68 @@ function App() {
   };
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(223,238,252,0.6),_transparent_30%),radial-gradient(circle_at_top_right,_rgba(233,230,255,0.4),_transparent_25%),linear-gradient(135deg,_#fffaf3_0%,_#fff8ee_100%)] text-slate-800 transition-colors dark:bg-slate-950 dark:text-slate-100">
-      <header className="mx-auto flex max-w-7xl items-center justify-between px-6 py-6 lg:px-8">
-        <Link to="/" className="flex items-center gap-3 text-lg font-semibold tracking-[0.2em] text-slate-700 dark:text-slate-100">
-          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white/80 shadow-soft dark:bg-slate-900">✈️</div>
-          BEYOND
-        </Link>
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => setDarkMode((prev) => !prev)}
-            className="rounded-full border border-solid border-slate-200 bg-white/70 p-3 shadow-sm backdrop-blur dark:bg-slate-900 dark:border-slate-800"
-            aria-label="Toggle theme"
-          >
-            {darkMode ? <SunMedium size={18} /> : <MoonStar size={18} />}
-          </button>
+    <div className="min-h-screen bg-pastel-cream text-slate-800 transition-colors overflow-x-hidden">
+      <header className="fixed top-0 left-0 right-0 z-40 h-[72px] bg-white/80 backdrop-blur-md border-b border-solid border-pastel-green/10 shadow-sm flex items-center">
+        <div className="mx-auto flex w-full max-w-7xl items-center justify-between px-6 lg:px-8">
+          <Link to="/" className="flex items-center gap-3">
+            <img src={logoImg} alt="Beyond" className="h-12 w-auto" />
+            <span className="text-2xl font-bold tracking-[0.2em] text-[#2d5a47] font-serif">BEYOND</span>
+          </Link>
+          <nav className="hidden md:flex items-center gap-8">
+            <Link to="/" className="text-sm font-medium text-[#2d5a47]/70 hover:text-[#2d5a47] transition-colors">Home</Link>
+            <a href="#destinations" className="text-sm font-medium text-[#2d5a47]/70 hover:text-[#2d5a47] transition-colors" onClick={(e) => { e.preventDefault(); document.getElementById('destinations')?.scrollIntoView({ behavior: 'smooth' }); }}>Destinations</a>
+            <Link to="/itinerary" className="text-sm font-medium text-[#2d5a47]/70 hover:text-[#2d5a47] transition-colors">My Trips</Link>
+          </nav>
           <button
             onClick={() => {
               setStep(0);
               setIsWizardOpen(true);
             }}
-            className="rounded-full bg-slate-900 px-4 py-2 text-sm font-medium text-white shadow-soft dark:bg-slate-100 dark:text-slate-900 border-0 cursor-pointer"
+            className="rounded-full bg-[#2d5a47] px-5 py-2.5 text-sm font-medium text-white border-0 cursor-pointer hover:bg-[#234a3a] transition-colors shadow-sm"
           >
-            Create My Trip
+            Plan a Trip
           </button>
         </div>
       </header>
+      {/* Spacer for fixed header */}
+      <div className="h-[72px]" />
 
       <Routes>
         <Route
           path="/"
           element={
             <>
-              <main className="mx-auto max-w-7xl px-6 pb-20 lg:px-8">
-                <section className="grid items-center gap-10 rounded-[2rem] border border-solid border-white/60 bg-white/70 px-6 py-10 shadow-soft backdrop-blur dark:bg-slate-900/50 dark:border-slate-800 xl:grid-cols-[1.1fr_0.9fr] xl:px-10 xl:py-14">
-                  <motion.div initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }} className="space-y-6">
-                    <div className="inline-flex items-center gap-2 rounded-full border border-solid border-slate-200 bg-slate-50/80 px-3 py-2 text-sm text-slate-650 dark:bg-slate-800/80 dark:border-slate-700 dark:text-slate-300">
-                      <Sparkles size={16} className="text-amber-500" />
-                      Beyond destinations. Into experiences.
-                    </div>
-                    <div className="space-y-4">
-                      <h1 className="text-5xl font-semibold leading-tight sm:text-6xl lg:text-7xl font-serif">
-                        Plan less.<br />
-                        Explore more.
+              <main>
+                {/* Hero Section — full bleed diagonal stripes */}
+                <section className="hero-stripes relative overflow-hidden">
+                  <div className="bg-white/25 backdrop-blur-[2px] px-6 py-8 md:py-16 flex flex-col items-center text-center">
+                    <motion.div initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }} className="space-y-3 mb-4">
+                      <h1 className="text-6xl sm:text-7xl lg:text-8xl font-bold leading-none font-serif text-[#2d5a47] drop-shadow-sm">
+                        BEYOND
                       </h1>
-                      <p className="max-w-xl text-lg text-slate-650 dark:text-slate-350">
-                        Discover India in a way that feels effortless, warm, and beautifully curated from first spark to final itinerary.
+                      <p className="text-xl md:text-2xl text-[#2d5a47]/80 font-medium tracking-wide max-w-2xl">
+                        Where every mile tells a story — discover the soul of India
                       </p>
-                    </div>
-                    <div className="flex flex-wrap gap-3">
+                    </motion.div>
+
+                    {/* Carousel */}
+                    <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.7, delay: 0.2 }} className="relative w-full py-2 overflow-hidden flex justify-center">
+                      <Carousel
+                        onPlanTrip={(destName) => {
+                          setValues((prev) => ({ ...prev, destination: destName }));
+                          setStep(0);
+                          setIsWizardOpen(true);
+                        }}
+                      />
+                    </motion.div>
+
+                    {/* CTAs below carousel */}
+                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.5, delay: 0.5 }} className="mt-12 flex flex-wrap gap-3 justify-center">
                       <button
                         onClick={() => {
                           document.getElementById('destinations')?.scrollIntoView({ behavior: 'smooth' });
                         }}
-                        className="rounded-full bg-slate-900 px-5 py-3 text-sm font-medium text-white shadow-soft dark:bg-slate-100 dark:text-slate-900 border-0 cursor-pointer"
+                        className="rounded-full bg-[#2d5a47] px-6 py-3 text-sm font-medium text-white shadow-soft border-0 cursor-pointer hover:bg-[#234a3a] transition-colors"
                       >
                         Explore Destinations
                       </button>
@@ -338,91 +357,144 @@ function App() {
                           setStep(0);
                           setIsWizardOpen(true);
                         }}
-                        className="rounded-full border border-solid border-slate-200 bg-white/80 px-5 py-3 text-sm font-medium text-slate-750 dark:bg-slate-900 dark:border-slate-800 dark:text-slate-200 cursor-pointer"
+                        className="rounded-full border border-solid border-white/60 bg-white/80 px-6 py-3 text-sm font-medium text-[#2d5a47] cursor-pointer hover:bg-white transition-colors backdrop-blur"
                       >
-                        Create My Trip
+                        Plan a Trip
                       </button>
-                    </div>
-                    <div className="flex flex-wrap gap-4 text-sm text-slate-600 dark:text-slate-400">
-                      <div className="flex items-center gap-2 rounded-full bg-sky/40 px-3 py-2"><Map size={16} /> Curated itineraries</div>
-                      <div className="flex items-center gap-2 rounded-full bg-mint/50 px-3 py-2"><Compass size={16} /> Travel style matched</div>
-                    </div>
-                  </motion.div>
+                    </motion.div>
 
-                  <motion.div initial={{ opacity: 0, x: 24 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.7 }} className="relative">
-                    <div className="absolute left-6 top-6 animate-float text-3xl">✈️</div>
-                    <div className="absolute right-4 top-10 animate-float text-2xl">🧳</div>
-                    <div className="absolute bottom-8 left-3 animate-float text-3xl">🌄</div>
-                    <div className="absolute bottom-4 right-8 animate-float text-2xl">🗺️</div>
-                    <div className="rounded-[2rem] border border-solid border-white/70 bg-gradient-to-br from-sky via-white to-lilac p-6 shadow-soft dark:from-slate-900 dark:to-slate-850 dark:border-slate-800">
-                      <div className="rounded-[1.5rem] bg-white/80 p-6 dark:bg-slate-900/80">
-                        <img
-                          src="https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1000&q=80"
-                          alt="Travel illustration"
-                          className="h-72 w-full rounded-[1.25rem] object-cover"
-                        />
-                        <div className="mt-4 flex items-center justify-between">
-                          <div>
-                            <p className="text-sm text-slate-500">Featured this week</p>
-                            <p className="text-xl font-semibold font-serif">Coastal escapes & mountain air</p>
-                          </div>
-                          <div className="rounded-full bg-cream px-3 py-2 text-sm dark:bg-slate-800">🌴</div>
-                        </div>
-                      </div>
-                    </div>
-                  </motion.div>
+                  </div>
                 </section>
 
-                <section id="destinations" className="mt-16">
-                  <div className="mb-8 flex items-end justify-between gap-4">
-                    <div>
-                      <p className="text-sm font-medium uppercase tracking-[0.3em] text-slate-500">Explore India</p>
-                      <h2 className="text-3xl font-semibold font-serif mt-1">Inspiring destinations for every kind of traveler</h2>
+                {/* SECTION 1 — Choose how you want to travel */}
+                <section id="choose-travel" className="py-16 md:py-24 bg-gradient-to-b from-[#f2f8f3] to-[#eaf4ed] border-y border-[#d0e2d5]">
+                  <div className="mx-auto max-w-7xl px-6 lg:px-8">
+                    <div className="text-center max-w-3xl mx-auto mb-14">
+                      <p className="text-xs font-bold uppercase tracking-[0.35em] text-[#2d5a47]/75 mb-2">
+                        CHOOSE HOW YOU WANT TO TRAVEL
+                      </p>
+                      <h2 className="text-4xl sm:text-5xl font-bold font-serif text-[#244b3d] tracking-tight">
+                        Your journey. Your way.
+                      </h2>
+                      <p className="mt-4 text-base sm:text-lg text-slate-600 leading-relaxed font-sans">
+                        Whether you know exactly where you're going or only have an idea in mind, Beyond builds the trip around you.
+                      </p>
                     </div>
-                    <div className="hidden rounded-full border border-solid border-slate-200 bg-white/70 px-4 py-2 text-sm text-slate-650 md:block dark:bg-slate-900 dark:border-slate-800 dark:text-slate-350">
-                      {backendReady ? 'Planner API ready' : 'Mock mode active'}
-                    </div>
-                  </div>
-                  <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-                    {destinations.map((destination, index) => (
-                      <motion.button
-                        key={destination.id}
-                        initial={{ opacity: 0, y: 16 }}
+
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                      {/* CARD 1 — I know where I want to go */}
+                      <motion.div
+                        initial={{ opacity: 0, y: 20 }}
                         whileInView={{ opacity: 1, y: 0 }}
-                        viewport={{ once: true, amount: 0.2 }}
-                        transition={{ duration: 0.35, delay: index * 0.06 }}
-                        whileHover={{ y: -6, scale: 1.01 }}
-                        onClick={() => {
-                          setSelectedDestination(destination);
-                          navigate(`/destination/${destination.id}`);
-                        }}
-                        className="group overflow-hidden rounded-[1.75rem] border border-solid border-white/70 bg-white/80 text-left shadow-soft dark:bg-slate-900/80 dark:border-slate-800"
+                        viewport={{ once: true }}
+                        transition={{ duration: 0.5 }}
+                        className="group relative flex flex-col justify-between rounded-[2rem] border-2 border-[#cfe1d4] bg-white p-7 sm:p-9 shadow-[0_12px_32px_rgba(45,90,71,0.06)] hover:shadow-[0_20px_48px_rgba(45,90,71,0.12)] hover:border-[#8ec5a7] transition-all duration-300 overflow-hidden"
                       >
-                        <div className={`h-44 bg-gradient-to-br ${destination.accent}`}>
-                          <img src={destination.image} alt={destination.name} className="h-full w-full object-cover transition duration-500 group-hover:scale-110" />
-                        </div>
-                        <div className="p-5">
-                          <div className="flex items-center justify-between gap-2">
-                            <h3 className="text-xl font-semibold font-serif">{destination.name}</h3>
-                            <Compass size={18} className="text-slate-400" />
-                          </div>
-                          <p className="mt-2 text-sm text-slate-650 dark:text-slate-400">{destination.description}</p>
-                        </div>
-                      </motion.button>
-                    ))}
-                  </div>
-                </section>
+                        <div className="relative z-10">
+                          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#edf6ef] border border-[#cfe1d4] text-[10px] font-bold uppercase tracking-[0.2em] text-[#2d5a47] mb-4">
+                            <MapPin size={12} /> I know where I want to go
+                          </span>
+                          <h3 className="text-2xl sm:text-3xl font-bold font-serif text-[#244b3d] mb-3">
+                            Explore a destination
+                          </h3>
+                          <p className="text-sm sm:text-base text-slate-600 leading-relaxed mb-6">
+                            Choose a state or city and start with a curated itinerary built around the best experiences, places and local highlights.
+                          </p>
 
-                <section className="mt-16 rounded-[2rem] border border-solid border-slate-200 bg-gradient-to-r from-sky/40 via-white/80 to-lilac/40 p-8 shadow-soft dark:from-slate-900 dark:to-slate-850 dark:border-slate-800">
-                  <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
-                    <div>
-                      <p className="text-sm font-medium uppercase tracking-[0.3em] text-slate-500">Future feature</p>
-                      <h3 className="text-3xl font-semibold font-serif">Create a Fully Customized Trip</h3>
-                      <p className="mt-2 max-w-xl text-slate-650 dark:text-slate-400">A deeply personalized planning experience with concierge-level recommendations is on the way.</p>
-                    </div>
-                    <div className="rounded-[1.5rem] border border-solid border-slate-200 bg-white/80 px-5 py-4 text-sm text-slate-650 dark:bg-slate-900 dark:border-slate-800 dark:text-slate-400">
-                      <p className="font-semibold text-slate-800 dark:text-slate-100">Coming Soon</p>
-                      <p className="mt-1">Tailored to your pace, interests, and mood.</p>
+                          <button
+                            onClick={() => {
+                              setStep(0);
+                              setIsWizardOpen(true);
+                            }}
+                            className="inline-flex items-center gap-2 rounded-full bg-[#2d5a47] px-6 py-3 text-sm font-semibold text-white shadow-md hover:bg-[#214334] transition-all cursor-pointer border-0 group-hover:gap-3"
+                          >
+                            Explore Destinations <ArrowRight size={15} />
+                          </button>
+                        </div>
+
+                        {/* Visual Preview */}
+                        <div className="mt-8 pt-6 border-t border-[#edf3ee] relative">
+                          <div className="grid grid-cols-3 gap-3">
+                            {[
+                              { name: 'Rajasthan', tag: 'Royal Forts', img: rajasthanImg },
+                              { name: 'Kerala', tag: 'Backwaters', img: kerelaImg },
+                              { name: 'Goa', tag: 'Coastal Vibe', img: goaImg },
+                            ].map((item) => (
+                              <div
+                                key={item.name}
+                                onClick={() => {
+                                  setValues((prev) => ({ ...prev, destination: item.name }));
+                                  setStep(0);
+                                  setIsWizardOpen(true);
+                                }}
+                                className="relative rounded-xl overflow-hidden h-28 border border-slate-200/80 shadow-sm hover:scale-[1.03] transition-transform duration-300 cursor-pointer"
+                              >
+                                <img src={item.img} alt={item.name} className="h-full w-full object-cover" />
+                                <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent flex flex-col justify-end p-2 text-white">
+                                  <p className="text-xs font-bold font-serif leading-tight">{item.name}</p>
+                                  <p className="text-[9px] text-white/80 uppercase tracking-wider">{item.tag}</p>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </motion.div>
+
+                      {/* CARD 2 — I already have a trip in mind */}
+                      <motion.div
+                        initial={{ opacity: 0, y: 20 }}
+                        whileInView={{ opacity: 1, y: 0 }}
+                        viewport={{ once: true }}
+                        transition={{ duration: 0.5, delay: 0.1 }}
+                        className="group relative flex flex-col justify-between rounded-[2rem] border-2 border-[#cfe1d4] bg-gradient-to-br from-white via-[#f8fcf9] to-[#edf6f0] p-7 sm:p-9 shadow-[0_12px_32px_rgba(45,90,71,0.06)] hover:shadow-[0_20px_48px_rgba(45,90,71,0.12)] hover:border-[#8ec5a7] transition-all duration-300 overflow-hidden"
+                      >
+                        <div className="relative z-10">
+                          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#f9c6d0]/40 border border-[#f9c6d0] text-[10px] font-bold uppercase tracking-[0.2em] text-[#6b2c3a] mb-4">
+                            <Sparkles size={12} /> I already have a trip in mind
+                          </span>
+                          <h3 className="text-2xl sm:text-3xl font-bold font-serif text-[#244b3d] mb-3">
+                            Build my own trip
+                          </h3>
+                          <p className="text-sm sm:text-base text-slate-600 leading-relaxed mb-6">
+                            Tell Beyond what you want from your journey. Share your destination, dates, budget, interests and travel style, or simply describe the trip in your own words.
+                          </p>
+
+                          <button
+                            onClick={() => navigate('/build-trip')}
+                            className="inline-flex items-center gap-2 rounded-full bg-[#1c3d2f] px-6 py-3 text-sm font-semibold text-white shadow-md hover:bg-[#12281e] transition-all cursor-pointer border-0 group-hover:gap-3"
+                          >
+                            Build My Trip <Wand2 size={15} className="text-[#f9c6d0]" />
+                          </button>
+                        </div>
+
+                        {/* Abstract AI / Travel Planning Visual */}
+                        <div className="mt-8 pt-6 border-t border-[#edf3ee] relative">
+                          <div className="rounded-xl border border-[#cfe1d4] bg-white/90 p-3.5 shadow-sm space-y-2.5">
+                            <div className="flex items-center justify-between">
+                              <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-[#2d5a47]">
+                                <BrainCircuit size={13} className="text-[#2d5a47]" /> Beyond Intelligence Core
+                              </span>
+                              <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                                Ready to plan
+                              </span>
+                            </div>
+                            <div className="flex flex-wrap gap-1.5">
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[#edf6ef] text-[11px] font-semibold text-[#2d5a47]">
+                                <MapPin size={12} className="text-[#2d5a47]" /> Any Destination in India
+                              </span>
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[#edf6ef] text-[11px] font-semibold text-[#2d5a47]">
+                                <Calendar size={12} className="text-[#2d5a47]" /> Flexible Dates
+                              </span>
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[#edf6ef] text-[11px] font-semibold text-[#2d5a47]">
+                                <Users size={12} className="text-[#2d5a47]" /> Solo to Big Groups
+                              </span>
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[#fef5ea] text-[11px] font-semibold text-[#b45309]">
+                                <Sparkles size={12} className="text-[#b45309]" /> 6 Curated Travel Styles
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      </motion.div>
                     </div>
                   </div>
                 </section>
@@ -447,76 +519,95 @@ function App() {
           path="/itinerary"
           element={<ItineraryPage itinerary={(location.state as { itinerary?: TripPlanResponse } | null)?.itinerary ?? itinerary} />}
         />
+        <Route path="/build-trip" element={<BuildTripPage />} />
       </Routes>
+
+      {/* Global Footer */}
+      {location.pathname !== '/build-trip' && <Footer />}
 
       <AnimatePresence>
         {isWizardOpen && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-[#FAF6F0]/90 dark:bg-slate-950/90 px-4 py-8 backdrop-blur-md overflow-y-auto">
-            {/* Center Header outside card */}
-            <div className="text-center mb-8 max-w-xl">
-              <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-500 dark:text-slate-400">TRIP PLANNER</p>
-              <h2 className="font-serif text-4xl sm:text-5xl font-bold text-slate-900 dark:text-slate-100 mt-2">Let's sketch your trip</h2>
-              <p className="text-sm text-slate-650 dark:text-slate-400 mt-2 font-medium">Six tiny questions. One dreamy itinerary at the end.</p>
-            </div>
-
-            <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 20, opacity: 0 }} className="w-full max-w-2xl rounded-[2.5rem] border border-solid border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 p-8 shadow-soft relative">
-              <button
-                onClick={() => setIsWizardOpen(false)}
-                className="absolute right-6 top-6 rounded-full border border-solid border-slate-200 dark:border-slate-700 w-8 h-8 flex items-center justify-center text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 text-sm font-semibold select-none cursor-pointer bg-transparent"
-                aria-label="Close"
-              >
-                ✕
-              </button>
-
-              {/* Progress bar */}
-              <div className="mb-6">
-                <div className="flex justify-between items-center text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">
-                  <span>STEP {step + 1} OF 7</span>
-                  <span>{Math.round(((step + 1) / 7) * 100)}%</span>
-                </div>
-                <div className="h-1.5 w-full bg-slate-150 dark:bg-slate-800 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-gradient-to-r from-sky-400 via-purple-400 to-rose-400 transition-all duration-300"
-                    style={{ width: `${((step + 1) / 7) * 100}%` }}
-                  />
-                </div>
-              </div>
-
-              {/* Question text */}
-              <div className="mb-6">
-                <h3 className="font-serif text-3xl font-bold text-slate-900 dark:text-slate-100">{stepTitles[step]}</h3>
-                <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{stepSubtitles[step]}</p>
-              </div>
-
-              {/* Render Question Content */}
-              <div className="min-h-[220px]">
-                {renderStepContent(step)}
-              </div>
-
-              {/* Action Buttons */}
-              <div className="mt-8 flex items-center justify-between border-t border-solid border-slate-100 dark:border-slate-800 pt-6">
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/65 dark:bg-slate-950/85 px-4 py-8 backdrop-blur-md overflow-y-auto">
+            {/* 1) Green Stripe Bigger Outer Box (same hero-stripes pattern as in hero section) */}
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="hero-stripes w-full max-w-4xl p-5 sm:p-9 border-4 border-solid border-[#2d5a47] shadow-2xl relative rounded-none"
+            >
+              {/* 2) White Input Box inside green stripe box without soft curves */}
+              <div className="bg-white dark:bg-slate-900 border-2 border-solid border-slate-300 dark:border-slate-800 p-6 sm:p-10 shadow-xl relative rounded-none">
                 <button
-                  onClick={() => setStep((prev) => Math.max(prev - 1, 0))}
-                  className={`rounded-full px-5 py-2.5 text-sm font-medium transition-all border-0 bg-transparent cursor-pointer ${step === 0 ? 'opacity-0 pointer-events-none' : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'}`}
-                  disabled={step === 0}
+                  onClick={() => setIsWizardOpen(false)}
+                  className="absolute right-6 top-6 border border-solid border-slate-300 dark:border-slate-700 w-8 h-8 flex items-center justify-center text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100 text-sm font-bold select-none cursor-pointer bg-white dark:bg-slate-800 hover:bg-slate-100 transition-colors rounded-none"
+                  aria-label="Close"
                 >
-                  ← Back
+                  ✕
                 </button>
-                {step < 6 ? (
+
+                {/* Top header inside white box */}
+                <div className="mb-6 border-b border-solid border-slate-200 dark:border-slate-800 pb-4">
+                  <p className="text-xs font-extrabold uppercase tracking-[0.3em] text-[#2d5a47] dark:text-slate-400">TRIP PLANNER</p>
+                  <h2 className="font-serif text-3xl sm:text-4xl font-bold text-slate-900 dark:text-slate-100 mt-1">Let's sketch your trip</h2>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 font-medium">Six tiny questions. One dreamy itinerary at the end.</p>
+                </div>
+
+                {/* Grid layout: Left = Step content, Right = Teenager traveler doodle */}
+                <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-center">
+                  <div className="md:col-span-8 space-y-4">
+                    {/* Progress bar */}
+                    <div>
+                      <div className="flex justify-between items-center text-[10px] font-extrabold uppercase tracking-wider text-slate-400 mb-1.5">
+                        <span>STEP {step + 1} OF 7</span>
+                        <span>{Math.round(((step + 1) / 7) * 100)}%</span>
+                      </div>
+                      <div className="h-2 w-full bg-slate-200 dark:bg-slate-800 overflow-hidden border border-solid border-slate-300 dark:border-slate-700 rounded-none">
+                        <div
+                          className="h-full bg-[#2d5a47] transition-all duration-300"
+                          style={{ width: `${((step + 1) / 7) * 100}%` }}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Question title & subtitle */}
+                    <div>
+                      <h3 className="font-serif text-2xl sm:text-3xl font-bold text-slate-900 dark:text-slate-100">{stepTitles[step]}</h3>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{stepSubtitles[step]}</p>
+                    </div>
+
+                    {/* Render Step Content */}
+                    <div className="min-h-[190px] pt-1">
+                      {renderStepContent(step)}
+                    </div>
+                  </div>
+
+                </div>
+
+                {/* Bottom Action Buttons */}
+                <div className="mt-8 flex items-center justify-between border-t border-solid border-slate-200 dark:border-slate-800 pt-5">
                   <button
-                    onClick={() => setStep((prev) => prev + 1)}
-                    className="rounded-full bg-[#0B1528] dark:bg-slate-100 hover:opacity-90 px-6 py-3 text-sm font-medium text-white dark:text-[#0B1528] flex items-center gap-1.5 transition-all shadow-md cursor-pointer border-0"
+                    onClick={() => setStep((prev) => Math.max(prev - 1, 0))}
+                    className={`border-2 border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-5 py-2.5 text-xs font-bold text-slate-700 dark:text-slate-200 transition-all cursor-pointer rounded-none hover:bg-slate-100 ${step === 0 ? 'opacity-0 pointer-events-none' : ''}`}
+                    disabled={step === 0}
                   >
-                    Continue →
+                    ← Back
                   </button>
-                ) : (
-                  <button
-                    onClick={handleSubmit}
-                    className="rounded-full bg-[#0B1528] dark:bg-slate-100 hover:opacity-90 px-6 py-3 text-sm font-medium text-white dark:text-[#0B1528] flex items-center gap-1.5 transition-all shadow-md cursor-pointer border-0"
-                  >
-                    {isLoading ? 'Generating…' : 'Generate Trip →'}
-                  </button>
-                )}
+                  {step < 6 ? (
+                    <button
+                      onClick={() => setStep((prev) => prev + 1)}
+                      className="border-2 border-[#2d5a47] bg-[#2d5a47] hover:bg-[#234a3a] px-6 py-2.5 text-xs font-bold uppercase tracking-wider text-white transition-all shadow-md cursor-pointer rounded-none"
+                    >
+                      Continue →
+                    </button>
+                  ) : (
+                    <button
+                      onClick={handleSubmit}
+                      className="border-2 border-[#2d5a47] bg-[#2d5a47] hover:bg-[#234a3a] px-6 py-2.5 text-xs font-bold uppercase tracking-wider text-white transition-all shadow-md cursor-pointer rounded-none"
+                    >
+                      {isLoading ? 'Generating…' : 'Generate Trip →'}
+                    </button>
+                  )}
+                </div>
               </div>
             </motion.div>
           </motion.div>
@@ -544,7 +635,7 @@ function DestinationPage({ selectedDestination, onPlan }: { selectedDestination:
               <h2 className="text-4xl font-semibold font-serif mt-1">{destination.name}</h2>
               <p className="mt-3 max-w-2xl text-slate-600 dark:text-slate-400">{destination.description}</p>
             </div>
-            <button onClick={onPlan} className="rounded-full bg-slate-900 px-5 py-3 text-sm font-medium text-white shadow-soft dark:bg-slate-100 dark:text-slate-900 border-0 cursor-pointer">
+            <button onClick={onPlan} className="rounded-full bg-[#2d5a47] px-5 py-3 text-sm font-medium text-white shadow-soft dark:bg-slate-100 dark:text-slate-900 border-0 cursor-pointer">
               Plan My {destination.name} Trip
             </button>
           </div>
@@ -566,14 +657,844 @@ function DestinationPage({ selectedDestination, onPlan }: { selectedDestination:
   );
 }
 
+/* ─── Undo Toast ─────────────────────────────────────────────────────────── */
+
+interface UndoToast {
+  id: string;
+  message: string;
+  onUndo: () => void;
+}
+
+function UndoToastContainer({ toasts, onDismiss }: { toasts: UndoToast[]; onDismiss: (id: string) => void }) {
+  return (
+    <div className="fixed bottom-6 right-6 z-[9999] flex flex-col gap-2 items-end pointer-events-none">
+      <AnimatePresence>
+        {toasts.map((toast) => (
+          <motion.div
+            key={toast.id}
+            initial={{ opacity: 0, y: 20, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 10, scale: 0.92 }}
+            transition={{ duration: 0.22 }}
+            className="pointer-events-auto flex items-center gap-3 rounded-xl bg-[#1c3d2f] text-white px-4 py-3 shadow-xl border border-[#2d5a47] min-w-[240px]"
+          >
+            <span className="text-sm font-medium flex-1">{toast.message}</span>
+            <button
+              onClick={toast.onUndo}
+              className="text-[#7ecfa1] font-bold text-sm hover:text-white transition-colors cursor-pointer border-0 bg-transparent px-1"
+            >
+              Undo
+            </button>
+            <button
+              onClick={() => onDismiss(toast.id)}
+              className="text-white/50 hover:text-white transition-colors cursor-pointer border-0 bg-transparent"
+            >
+              <X size={14} />
+            </button>
+          </motion.div>
+        ))}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+/* ─── Reschedule Picker ──────────────────────────────────────────────────── */
+
+function ReschedulePicker({
+  currentSlot,
+  onSelect,
+  onClose,
+}: {
+  currentSlot: string;
+  onSelect: (slot: 'morning' | 'afternoon' | 'evening') => void;
+  onClose: () => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [onClose]);
+
+  const slots = [
+    { id: 'morning' as const, label: 'Morning', icon: '🌅' },
+    { id: 'afternoon' as const, label: 'Afternoon', icon: '☀️' },
+    { id: 'evening' as const, label: 'Evening', icon: '🌙' },
+  ];
+
+  return (
+    <motion.div
+      ref={ref}
+      initial={{ opacity: 0, scale: 0.92, y: -6 }}
+      animate={{ opacity: 1, scale: 1, y: 0 }}
+      exit={{ opacity: 0, scale: 0.92 }}
+      transition={{ duration: 0.15 }}
+      className="absolute top-9 right-0 z-50 bg-white rounded-xl shadow-xl border border-[#cfe1d4] p-2 flex flex-col gap-1 min-w-[160px]"
+    >
+      <p className="text-[10px] font-bold uppercase tracking-widest text-[#2d5a47]/60 px-2 pt-1 pb-0.5">Move to slot</p>
+      {slots.map((slot) => (
+        <button
+          key={slot.id}
+          onClick={() => { if (slot.id !== currentSlot) { onSelect(slot.id); onClose(); } }}
+          disabled={slot.id === currentSlot}
+          className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors cursor-pointer border-0 text-left ${
+            slot.id === currentSlot
+              ? 'bg-[#edf6ef] text-[#2d5a47]/40 cursor-not-allowed'
+              : 'hover:bg-[#f0f9f3] text-slate-700 hover:text-[#2d5a47]'
+          }`}
+        >
+          <span>{slot.icon}</span>
+          {slot.label}
+          {slot.id === currentSlot && (
+            <span className="ml-auto text-[9px] font-bold uppercase tracking-wider text-[#2d5a47]/40">current</span>
+          )}
+        </button>
+      ))}
+    </motion.div>
+  );
+}
+
+/* ─── Swap Drawer ────────────────────────────────────────────────────────── */
+
+function SwapDrawer({
+  activity,
+  slot,
+  dayIndex,
+  actIndex,
+  destination,
+  travelStyle,
+  onSwap,
+  onClose,
+}: {
+  activity: ActivityItem;
+  slot: string;
+  dayIndex: number;
+  actIndex: number;
+  destination: string;
+  travelStyle: string;
+  onSwap: (alt: SwapAlternative) => void;
+  onClose: () => void;
+}) {
+  const [loading, setLoading] = useState(true);
+  const [alternatives, setAlternatives] = useState<SwapAlternative[]>([]);
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError(false);
+
+    // Parse city from place string "Place Name,City" format
+    const placeParts = activity.place.split(',');
+    const city = placeParts.length > 1 ? placeParts[placeParts.length - 1].trim() : destination;
+
+    fetchSwapAlternatives({
+      place: activity.place,
+      category: activity.category,
+      city,
+      destination,
+      travel_style: travelStyle,
+    }).then((results) => {
+      if (cancelled) return;
+      if (results.length === 0) setError(true);
+      setAlternatives(results);
+      setLoading(false);
+    });
+
+    return () => { cancelled = true; };
+  }, [activity.place, activity.category, destination, travelStyle]);
+
+  return (
+    <AnimatePresence>
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        className="fixed inset-0 z-[9998] bg-slate-900/40 backdrop-blur-[2px] flex items-end sm:items-center justify-center p-4"
+        onClick={onClose}
+      >
+        <motion.div
+          initial={{ y: 60, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          exit={{ y: 60, opacity: 0 }}
+          transition={{ type: 'spring', damping: 28, stiffness: 340 }}
+          className="w-full max-w-md bg-white rounded-2xl shadow-2xl border border-[#cfe1d4] overflow-hidden"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* Header */}
+          <div className="flex items-start justify-between gap-3 p-5 border-b border-[#e7efe9]">
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-[0.25em] text-[#2d5a47]/60">Swap Activity</p>
+              <p className="text-base font-semibold text-slate-800 mt-0.5 leading-tight">{activity.place.split(',')[0]}</p>
+              <span className="inline-flex items-center gap-1 mt-1 rounded-full bg-[#e8f3eb] px-2 py-0.5 text-[9px] font-bold uppercase tracking-widest text-[#2d5a47]">
+                {activity.category}
+              </span>
+            </div>
+            <button onClick={onClose} className="text-slate-400 hover:text-slate-700 transition-colors cursor-pointer border-0 bg-transparent mt-0.5">
+              <X size={18} />
+            </button>
+          </div>
+
+          {/* Body */}
+          <div className="p-4 space-y-2.5 max-h-[55vh] overflow-y-auto">
+            {loading && (
+              <div className="flex flex-col items-center justify-center py-10 gap-3">
+                <motion.div
+                  animate={{ rotate: 360 }}
+                  transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+                  className="w-8 h-8 rounded-full border-2 border-[#2d5a47] border-t-transparent"
+                />
+                <p className="text-sm text-slate-500">Finding alternatives nearby…</p>
+              </div>
+            )}
+
+            {!loading && error && (
+              <div className="text-center py-8 text-slate-500 text-sm">
+                No alternatives found. Try again later.
+              </div>
+            )}
+
+            {!loading && !error && alternatives.map((alt, idx) => (
+              <motion.button
+                key={alt.place_id || idx}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: idx * 0.07 }}
+                onClick={() => { onSwap(alt); onClose(); }}
+                className="w-full text-left rounded-xl border border-[#dfeae2] bg-[#f9fcfa] hover:bg-[#edf6ef] hover:border-[#aac7b4] p-3.5 transition-all cursor-pointer group border-0 shadow-sm"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-center gap-2.5">
+                    {alt.image && (
+                      <img
+                        src={alt.image}
+                        alt={alt.name}
+                        className="w-10 h-10 rounded-lg object-cover flex-shrink-0 border border-[#dfeae2]"
+                        loading="lazy"
+                      />
+                    )}
+                    <p className="font-semibold text-slate-800 text-sm leading-snug group-hover:text-[#2d5a47] transition-colors">{alt.name}</p>
+                  </div>
+                  {alt.rating != null && (
+                    <span className="flex items-center gap-0.5 flex-shrink-0 bg-amber-50 border border-amber-200 rounded-full px-1.5 py-0.5 text-[10px] font-bold text-amber-700">
+                      <Star size={9} className="fill-amber-500 text-amber-500" />
+                      {alt.rating.toFixed(1)}
+                    </span>
+                  )}
+                </div>
+                {alt.description ? (
+                  <p className="mt-1.5 text-xs text-slate-600 leading-relaxed line-clamp-2">
+                    {alt.description}
+                  </p>
+                ) : alt.address ? (
+                  <p className="mt-1 flex items-start gap-1 text-[11px] text-slate-500 leading-snug">
+                    <MapPin size={10} className="flex-shrink-0 mt-0.5 text-[#2d5a47]/60" />
+                    {alt.address.replace(/^[A-Z0-9+]+\s*,\s*/i, '').slice(0, 70)}
+                  </p>
+                ) : null}
+                <p className="mt-2 text-[10px] font-bold uppercase tracking-wider text-[#2d5a47] opacity-0 group-hover:opacity-100 transition-opacity">
+                  Tap to swap →
+                </p>
+              </motion.button>
+            ))}
+          </div>
+        </motion.div>
+      </motion.div>
+    </AnimatePresence>
+  );
+}
+
+/* ─── Activity Card ──────────────────────────────────────────────────────── */
+
+function ActivityCard({
+  activity,
+  actIdx,
+  slot,
+  dayIndex,
+  destination,
+  travelStyle,
+  onRemove,
+  onSwap,
+  onReschedule,
+}: {
+  activity: ActivityItem;
+  actIdx: number;
+  slot: string;
+  dayIndex: number;
+  destination: string;
+  travelStyle: string;
+  onRemove: () => void;
+  onSwap: (alt: SwapAlternative) => void;
+  onReschedule: (toSlot: 'morning' | 'afternoon' | 'evening') => void;
+}) {
+  const [showReschedule, setShowReschedule] = useState(false);
+  const [showSwap, setShowSwap] = useState(false);
+
+  return (
+    <>
+      <motion.div
+        layout
+        initial={{ opacity: 0, y: 6 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.96 }}
+        transition={{ duration: 0.2 }}
+        className="rounded-xl border border-[#dfeae2] bg-[#f9fcfa] p-4 shadow-sm relative"
+      >
+        {/* Top row: category badge + duration + quick-action buttons */}
+        <div className="flex items-center justify-between gap-2 mb-2">
+          <div className="flex items-center gap-2 flex-wrap min-w-0">
+            <span className="rounded-full bg-[#e8f3eb] px-2.5 py-0.5 text-[8px] font-bold uppercase tracking-[0.18em] text-[#2d5a47] whitespace-nowrap">
+              {activity.category}
+            </span>
+            <span className="text-[11px] sm:text-[12px] font-semibold text-slate-500 whitespace-nowrap">
+              {activity.duration}
+            </span>
+          </div>
+
+          {/* Quick-action icon buttons */}
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            {/* Remove */}
+            <button
+              onClick={(e) => { e.stopPropagation(); onRemove(); }}
+              title="Remove this activity"
+              className="flex items-center gap-1 px-2 py-1.5 rounded-lg bg-red-50 border border-red-200 text-red-600 hover:bg-red-100 hover:border-red-300 transition-all cursor-pointer text-[10px] font-bold uppercase tracking-wide"
+            >
+              <Trash2 size={11} />
+              <span className="hidden sm:inline">Remove</span>
+            </button>
+
+            {/* Swap */}
+            <button
+              onClick={(e) => { e.stopPropagation(); setShowSwap(true); }}
+              title="Find alternatives"
+              className="flex items-center gap-1 px-2 py-1.5 rounded-lg bg-[#edf6ef] border border-[#aac7b4] text-[#2d5a47] hover:bg-[#dff0e5] hover:border-[#7ab898] transition-all cursor-pointer text-[10px] font-bold uppercase tracking-wide"
+            >
+              <RefreshCw size={11} />
+              <span className="hidden sm:inline">Swap</span>
+            </button>
+
+            {/* Reschedule */}
+            <div className="relative">
+              <button
+                onClick={(e) => { e.stopPropagation(); setShowReschedule((v) => !v); }}
+                title="Move to a different time slot"
+                className="flex items-center gap-1 px-2 py-1.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-700 hover:bg-amber-100 hover:border-amber-300 transition-all cursor-pointer text-[10px] font-bold uppercase tracking-wide"
+              >
+                <Clock size={11} />
+                <span className="hidden sm:inline">Move</span>
+              </button>
+              <AnimatePresence>
+                {showReschedule && (
+                  <ReschedulePicker
+                    currentSlot={slot}
+                    onSelect={(toSlot) => { onReschedule(toSlot); }}
+                    onClose={() => setShowReschedule(false)}
+                  />
+                )}
+              </AnimatePresence>
+            </div>
+          </div>
+        </div>
+
+        {/* Place name row with optional image */}
+        <div className="flex gap-3 items-start">
+          {activity.image && (
+            <img
+              src={activity.image}
+              alt={activity.place}
+              className="w-16 h-16 sm:w-20 sm:h-20 rounded-xl object-cover flex-shrink-0 border border-[#dfeae2] shadow-sm"
+              loading="lazy"
+            />
+          )}
+          <div className="flex-1 min-w-0">
+            <p className="text-base sm:text-lg font-semibold text-slate-800">{activity.place}</p>
+            {activity.description && (
+              <p className="mt-1 text-sm sm:text-[15px] leading-relaxed text-slate-700">{sanitizeText(activity.description)}</p>
+            )}
+          </div>
+        </div>
+        {activity.fun_fact && (
+          <div className="mt-2 rounded-md bg-[#f0f7f2] p-2 text-[12px] sm:text-[13px] text-[#244b3d] border border-[#d6e8dc]">
+            <span className="font-semibold mr-1">Fun Fact:</span>
+            {sanitizeText(activity.fun_fact)}
+          </div>
+        )}
+        {activity.tips && (
+          <div className="mt-2 border-t border-[#e9f0eb] pt-2 text-[12px] sm:text-[13px] text-slate-600">
+            <span className="mr-2 text-[#2d5a47]">•</span>
+            {sanitizeText(activity.tips)}
+          </div>
+        )}
+      </motion.div>
+
+      {/* Swap Drawer — rendered as portal-level overlay */}
+      {showSwap && (
+        <SwapDrawer
+          activity={activity}
+          slot={slot}
+          dayIndex={dayIndex}
+          actIndex={actIdx}
+          destination={destination}
+          travelStyle={travelStyle}
+          onSwap={onSwap}
+          onClose={() => setShowSwap(false)}
+        />
+      )}
+    </>
+  );
+}
+
+/* ─── Add Activity Drawer ────────────────────────────────────────────────── */
+
+function AddActivityDrawer({
+  slot,
+  day,
+  destination,
+  travelStyle,
+  onAdd,
+  onClose,
+}: {
+  slot: string;
+  day: DayPlan;
+  destination: string;
+  travelStyle: string;
+  onAdd: (activity: ActivityItem) => void;
+  onClose: () => void;
+}) {
+  const slotLabel = slot === 'morning' ? 'Morning' : slot === 'afternoon' ? 'Afternoon' : 'Evening';
+  const slotIcon = slot === 'morning' ? '🌅' : slot === 'afternoon' ? '☀️' : '🌙';
+  const placeholders = [
+    `e.g. a famous local restaurant for ${slotLabel.toLowerCase()}`,
+    `e.g. a heritage walk in the old city`,
+    `e.g. riverside cafe with a view`,
+    `e.g. top-rated museum nearby`,
+  ];
+  const placeholder = placeholders[Math.floor(Math.random() * placeholders.length)];
+
+  const [query, setQuery] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => { setTimeout(() => inputRef.current?.focus(), 120); }, []);
+
+  // Parse city from first activity's place field, or fall back to destination
+  const city = (() => {
+    const allActivities = [...(day.morning ?? []), ...(day.afternoon ?? []), ...(day.evening ?? [])];
+    if (allActivities.length > 0) {
+      const parts = allActivities[0].place.split(',');
+      if (parts.length > 1) return parts[parts.length - 1].trim();
+    }
+    return destination;
+  })();
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!query.trim()) return;
+    setLoading(true);
+    setError('');
+    try {
+      const result = await addActivity({
+        query: query.trim(),
+        slot,
+        day_date: day.date,
+        destination,
+        city,
+        travel_style: travelStyle,
+      });
+      if (!result) { setError('Could not find a matching place. Try a different description.'); setLoading(false); return; }
+      onAdd(result);
+      onClose();
+    } catch {
+      setError('Something went wrong. Please try again.');
+      setLoading(false);
+    }
+  };
+
+  return (
+    <AnimatePresence>
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        className="fixed inset-0 z-[9998] bg-slate-900/40 backdrop-blur-[2px] flex items-end sm:items-center justify-center p-4"
+        onClick={onClose}
+      >
+        <motion.div
+          initial={{ y: 50, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          exit={{ y: 50, opacity: 0 }}
+          transition={{ type: 'spring', damping: 28, stiffness: 340 }}
+          className="w-full max-w-md bg-white rounded-2xl shadow-2xl border border-[#cfe1d4] overflow-hidden"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* Header */}
+          <div className="flex items-center justify-between gap-3 px-5 py-4 bg-[#2d5a47]">
+            <div className="flex items-center gap-2">
+              <span className="text-lg">{slotIcon}</span>
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-[0.25em] text-white/60">Add to {slotLabel}</p>
+                <p className="text-sm font-semibold text-white">{day.date} · {day.theme}</p>
+              </div>
+            </div>
+            <button onClick={onClose} className="text-white/60 hover:text-white transition-colors cursor-pointer border-0 bg-transparent">
+              <X size={18} />
+            </button>
+          </div>
+
+          {/* Chat body */}
+          <div className="px-5 pt-5 pb-4">
+            <div className="mb-4 rounded-xl bg-[#f0f9f3] border border-[#cfe1d4] p-3.5">
+              <p className="text-[11px] font-bold uppercase tracking-widest text-[#2d5a47]/60 mb-1">Beyond AI</p>
+              <p className="text-sm text-slate-700 leading-relaxed">
+                What would you like to add to your <span className="font-semibold text-[#2d5a47]">{slotLabel.toLowerCase()}</span> in <span className="font-semibold text-[#2d5a47]">{city}</span>? Describe it naturally and I'll find a real place for you.
+              </p>
+            </div>
+
+            <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+              <div className="flex gap-2 items-center rounded-xl border-2 border-[#cfe1d4] bg-[#f9fcfa] px-3 py-2.5 focus-within:border-[#2d5a47] transition-colors">
+                <input
+                  ref={inputRef}
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder={placeholder}
+                  disabled={loading}
+                  className="flex-1 bg-transparent text-sm text-slate-800 placeholder-slate-400 outline-none border-0"
+                />
+                <button
+                  type="submit"
+                  disabled={loading || !query.trim()}
+                  className="flex-shrink-0 w-8 h-8 rounded-lg bg-[#2d5a47] text-white flex items-center justify-center disabled:opacity-40 hover:bg-[#234a3a] transition-colors cursor-pointer border-0"
+                >
+                  {loading ? (
+                    <motion.div
+                      animate={{ rotate: 360 }}
+                      transition={{ duration: 0.9, repeat: Infinity, ease: 'linear' }}
+                      className="w-3.5 h-3.5 rounded-full border-2 border-white border-t-transparent"
+                    />
+                  ) : (
+                    <Send size={13} />
+                  )}
+                </button>
+              </div>
+              {error && <p className="text-xs text-red-500 font-medium">{error}</p>}
+              {loading && (
+                <p className="text-xs text-[#2d5a47]/70 animate-pulse">Finding and enriching your activity...</p>
+              )}
+            </form>
+
+            <div className="mt-3 flex flex-wrap gap-1.5">
+              {['Local restaurant', 'Famous temple', 'Scenic viewpoint', 'Market walk'].map((suggestion) => (
+                <button
+                  key={suggestion}
+                  onClick={() => setQuery(suggestion + ' in ' + city)}
+                  disabled={loading}
+                  className="px-2.5 py-1 rounded-full border border-[#cfe1d4] bg-white text-[10px] font-medium text-slate-600 hover:bg-[#edf6ef] hover:border-[#aac7b4] hover:text-[#2d5a47] transition-all cursor-pointer"
+                >
+                  {suggestion}
+                </button>
+              ))}
+            </div>
+          </div>
+        </motion.div>
+      </motion.div>
+    </AnimatePresence>
+  );
+}
+
+/* ─── Expandable Day Cards for Itinerary ─────────────────────────────────── */
+
+function DayCardList({
+  days,
+  destination,
+  travelStyle,
+  onDaysChange,
+}: {
+  days: DayPlan[];
+  destination: string;
+  travelStyle: string;
+  onDaysChange: (days: DayPlan[]) => void;
+}) {
+  const [expandedDay, setExpandedDay] = useState<number | null>(null);
+  const [toasts, setToasts] = useState<UndoToast[]>([]);
+
+  const dismissToast = useCallback((id: string) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  }, []);
+
+  const addUndoToast = useCallback((message: string, undoFn: () => void) => {
+    const id = `toast-${Date.now()}-${Math.random()}`;
+    setToasts((prev) => [...prev, { id, message, onUndo: () => { undoFn(); dismissToast(id); } }]);
+    setTimeout(() => dismissToast(id), 5000);
+  }, [dismissToast]);
+
+  const removeActivity = useCallback((dayIdx: number, slot: keyof Pick<DayPlan, 'morning' | 'afternoon' | 'evening'>, actIdx: number) => {
+    const removed = days[dayIdx][slot][actIdx];
+    const updatedDays = days.map((d, di) => {
+      if (di !== dayIdx) return d;
+      return { ...d, [slot]: d[slot].filter((_, ai) => ai !== actIdx) };
+    });
+    onDaysChange(updatedDays);
+    addUndoToast(`Removed "${removed.place.split(',')[0]}"`, () => {
+      onDaysChange(days);
+    });
+  }, [days, onDaysChange, addUndoToast]);
+
+  const swapActivity = useCallback((dayIdx: number, slot: keyof Pick<DayPlan, 'morning' | 'afternoon' | 'evening'>, actIdx: number, alt: SwapAlternative) => {
+    const original = days[dayIdx][slot][actIdx];
+    const cityName = original.place.split(',').slice(-1)[0]?.trim() || '';
+    const cleanAddress = alt.address ? alt.address.replace(/^[A-Z0-9+]+\s*,\s*/i, '').trim() : '';
+
+    const replacement: ActivityItem = {
+      ...original,
+      place: `${alt.name}, ${cityName}`.trim().replace(/,\s*$/, ''),
+      description: alt.description || (alt.rating ? `A highly-rated destination (${alt.rating} stars) in ${cityName}.` : `A great spot in ${cityName}.`),
+      tips: alt.tips || (cleanAddress ? `Located near ${cleanAddress}. Check opening hours before visiting.` : 'Check opening hours before visiting.'),
+      fun_fact: alt.fun_fact || undefined,
+      image: alt.image || undefined,
+    };
+    onDaysChange(days.map((d, di) => {
+      if (di !== dayIdx) return d;
+      const newSlot = [...d[slot]];
+      newSlot[actIdx] = replacement;
+      return { ...d, [slot]: newSlot };
+    }));
+  }, [days, onDaysChange]);
+
+  const rescheduleActivity = useCallback((dayIdx: number, fromSlot: keyof Pick<DayPlan, 'morning' | 'afternoon' | 'evening'>, actIdx: number, toSlot: 'morning' | 'afternoon' | 'evening') => {
+    if (fromSlot === toSlot) return;
+    const activity = days[dayIdx][fromSlot][actIdx];
+    onDaysChange(days.map((d, di) => {
+      if (di !== dayIdx) return d;
+      return {
+        ...d,
+        [fromSlot]: d[fromSlot].filter((_, ai) => ai !== actIdx),
+        [toSlot]: [...d[toSlot], { ...activity }],
+      };
+    }));
+  }, [days, onDaysChange]);
+
+  const addActivityToDay = useCallback((dayIdx: number, slot: keyof Pick<DayPlan, 'morning' | 'afternoon' | 'evening'>, activity: ActivityItem) => {
+    onDaysChange(days.map((d, di) => {
+      if (di !== dayIdx) return d;
+      return { ...d, [slot]: [...d[slot], activity] };
+    }));
+  }, [days, onDaysChange]);
+
+  return (
+    <>
+      <div className="space-y-4">
+        {days.map((day, index) => (
+          <DayCard
+            key={`${day.date}-${index}`}
+            day={day}
+            index={index}
+            isExpanded={expandedDay === index}
+            onToggle={() => setExpandedDay(expandedDay === index ? null : index)}
+            destination={destination}
+            travelStyle={travelStyle}
+            onRemoveActivity={(slot, actIdx) => removeActivity(index, slot, actIdx)}
+            onSwapActivity={(slot, actIdx, alt) => swapActivity(index, slot, actIdx, alt)}
+            onRescheduleActivity={(fromSlot, actIdx, toSlot) => rescheduleActivity(index, fromSlot, actIdx, toSlot)}
+            onAddActivity={(slot, activity) => addActivityToDay(index, slot, activity)}
+          />
+        ))}
+      </div>
+      <UndoToastContainer toasts={toasts} onDismiss={dismissToast} />
+    </>
+  );
+}
+
+function DayCard({
+  day,
+  index,
+  isExpanded,
+  onToggle,
+  destination,
+  travelStyle,
+  onRemoveActivity,
+  onSwapActivity,
+  onRescheduleActivity,
+  onAddActivity,
+}: {
+  day: DayPlan;
+  index: number;
+  isExpanded: boolean;
+  onToggle: () => void;
+  destination: string;
+  travelStyle: string;
+  onRemoveActivity: (slot: keyof Pick<DayPlan, 'morning' | 'afternoon' | 'evening'>, actIdx: number) => void;
+  onSwapActivity: (slot: keyof Pick<DayPlan, 'morning' | 'afternoon' | 'evening'>, actIdx: number, alt: SwapAlternative) => void;
+  onRescheduleActivity: (fromSlot: keyof Pick<DayPlan, 'morning' | 'afternoon' | 'evening'>, actIdx: number, toSlot: 'morning' | 'afternoon' | 'evening') => void;
+  onAddActivity: (slot: keyof Pick<DayPlan, 'morning' | 'afternoon' | 'evening'>, activity: ActivityItem) => void;
+}) {
+  const slots = (['morning', 'afternoon', 'evening'] as const).filter(
+    (slot) => Array.isArray(day[slot]) && day[slot].length > 0
+  );
+
+  const [activeSlot, setActiveSlot] = useState<string>(slots[0] || 'morning');
+  const [showAddDrawer, setShowAddDrawer] = useState(false);
+
+  // Close the add-activity drawer whenever the active slot changes
+  useEffect(() => { setShowAddDrawer(false); }, [activeSlot]);
+
+  // Build a short description from notes or first activity places
+  const shortDesc = sanitizeText(day.notes)
+    ? sanitizeText(day.notes).slice(0, 120) + (sanitizeText(day.notes).length > 120 ? '…' : '')
+    : slots
+        .map((s) => {
+          const acts = day[s] as DayPlan['morning'];
+          return acts?.[0]?.place;
+        })
+        .filter(Boolean)
+        .join(' → ');
+
+  return (
+    <div className="rounded-[1.2rem] border border-[#cfe1d4] bg-white shadow-[0_8px_18px_rgba(45,90,71,0.06)] overflow-hidden transition-all duration-300">
+      {/* Collapsed Header — always visible */}
+      <button
+        onClick={onToggle}
+        className="w-full text-left px-5 py-4 sm:px-6 sm:py-5 flex items-center gap-4 group hover:bg-[#f9fcfa] transition-colors"
+      >
+        {/* Day number badge */}
+        <div className="flex-shrink-0 w-14 h-14 rounded-xl bg-[#2d5a47] flex flex-col items-center justify-center shadow-md">
+          <span className="text-[9px] font-bold uppercase tracking-widest text-white/70">Day</span>
+          <span className="text-xl font-bold text-white leading-none">{index + 1}</span>
+        </div>
+
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-0.5">
+            <h3 className="font-serif text-xl sm:text-2xl text-[#244b3d] truncate">{day.theme}</h3>
+          </div>
+          <p className="text-xs text-slate-500 truncate">{day.date}{shortDesc ? ` · ${shortDesc}` : ''}</p>
+        </div>
+
+        <div className="flex-shrink-0 flex items-center gap-2">
+          <span className="hidden sm:inline text-[10px] font-bold uppercase tracking-wider text-[#2d5a47]/60">
+            {isExpanded ? 'Close' : 'See Details'}
+          </span>
+          <span
+            className={`text-[#2d5a47] transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`}
+          >
+            ▾
+          </span>
+        </div>
+      </button>
+
+      {/* Expanded content */}
+      {isExpanded && (
+        <div className="px-5 pb-5 sm:px-6 sm:pb-6 border-t border-[#e7efe9]">
+          {/* Thin Interactive Slot Card Strip */}
+          <div className="slot-card-strip mt-4">
+            {(['morning', 'afternoon', 'evening'] as const).map((slot) => (
+              <div
+                key={slot}
+                className={`slot-card-panel ${activeSlot === slot ? 'active' : ''}`}
+                onClick={() => setActiveSlot(slot)}
+              >
+                <span className="slot-card-label">
+                  {slot === 'morning' ? '🌅' : slot === 'afternoon' ? '☀️' : '🌙'}{' '}
+                  {slot}
+                  {day[slot].length > 0 && (
+                    <span className="ml-1.5 inline-flex items-center justify-center w-4 h-4 rounded-full bg-[#2d5a47]/10 text-[9px] font-bold text-[#2d5a47]">
+                      {day[slot].length}
+                    </span>
+                  )}
+                </span>
+              </div>
+            ))}
+          </div>
+
+          {/* Expanded Slot Detail */}
+          {activeSlot && (() => {
+            const slotKey = activeSlot as keyof Pick<DayPlan, 'morning' | 'afternoon' | 'evening'>;
+            return (
+              <div key={activeSlot} className="mt-4 space-y-3 animate-fadeIn">
+                <h4 className="text-[11px] font-bold uppercase tracking-[0.2em] text-[#2d5a47]/80 mb-2">
+                  {activeSlot} Plan
+                </h4>
+                {(() => {
+                  const activities = day[slotKey] as ActivityItem[];
+                  if (!activities || activities.length === 0) {
+                    return (
+                      <div className="rounded-xl border border-dashed border-[#cfe1d4] bg-[#f9fcfa]/50 p-5 text-center text-sm text-slate-400">
+                        No activities planned for this slot.
+                      </div>
+                    );
+                  }
+                  return (
+                    <AnimatePresence>
+                      {activities.map((activity, actIdx) => (
+                        <ActivityCard
+                          key={`${slotKey}-${actIdx}-${activity.place}`}
+                          activity={activity}
+                          actIdx={actIdx}
+                          slot={activeSlot}
+                          dayIndex={index}
+                          destination={destination}
+                          travelStyle={travelStyle}
+                          onRemove={() => onRemoveActivity(slotKey, actIdx)}
+                          onSwap={(alt) => onSwapActivity(slotKey, actIdx, alt)}
+                          onReschedule={(toSlot) => onRescheduleActivity(slotKey, actIdx, toSlot)}
+                        />
+                      ))}
+                    </AnimatePresence>
+                  );
+                })()}
+
+                {/* Add to this slot button */}
+                <motion.button
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  onClick={() => setShowAddDrawer(true)}
+                  className="w-full flex items-center justify-center gap-2 mt-2 py-2.5 rounded-xl border-2 border-dashed border-[#b8d4c1] bg-transparent hover:bg-[#edf6ef] hover:border-[#7ab898] transition-all cursor-pointer text-[#2d5a47]/70 hover:text-[#2d5a47] text-xs font-bold uppercase tracking-widest group"
+                >
+                  <Plus size={14} className="group-hover:scale-110 transition-transform" />
+                  Add to {activeSlot}
+                </motion.button>
+
+                {showAddDrawer && (
+                  <AddActivityDrawer
+                    slot={activeSlot}
+                    day={day}
+                    destination={destination}
+                    travelStyle={travelStyle}
+                    onAdd={(activity) => onAddActivity(slotKey, activity)}
+                    onClose={() => setShowAddDrawer(false)}
+                  />
+                )}
+              </div>
+            );
+          })()}
+
+          {/* Daily Notes */}
+          {day.notes && (
+            <div className="mt-4 rounded-xl border border-[#dfeae2] bg-[#edf6ef] p-3 text-sm sm:text-base leading-relaxed text-[#284b3d]">
+              <span className="mr-2 font-semibold">Daily Note:</span>
+              {sanitizeText(day.notes)}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+
 function ItineraryPage({ itinerary }: { itinerary: TripPlanResponse | null }) {
   const location = useLocation();
   const [resolvedItinerary, setResolvedItinerary] = useState<TripPlanResponse | null>(itinerary);
+  // Mutable days — allows Remove / Swap / Reschedule without regenerating the trip
+  const [mutableDays, setMutableDays] = useState<DayPlan[]>([]);
 
   useEffect(() => {
     const locationItinerary = (location.state as { itinerary?: TripPlanResponse } | null)?.itinerary;
     if (locationItinerary) {
       setResolvedItinerary(locationItinerary);
+      setMutableDays(locationItinerary.days ?? []);
       window.localStorage.setItem('beyond-itinerary', JSON.stringify(locationItinerary));
       return;
     }
@@ -581,10 +1502,13 @@ function ItineraryPage({ itinerary }: { itinerary: TripPlanResponse | null }) {
     try {
       const saved = window.localStorage.getItem('beyond-itinerary');
       if (saved) {
-        setResolvedItinerary(JSON.parse(saved) as TripPlanResponse);
+        const parsed = JSON.parse(saved) as TripPlanResponse;
+        setResolvedItinerary(parsed);
+        setMutableDays(parsed.days ?? []);
       }
     } catch {
       setResolvedItinerary(itinerary);
+      setMutableDays(itinerary?.days ?? []);
     }
   }, [itinerary, location.state]);
 
@@ -597,93 +1521,225 @@ function ItineraryPage({ itinerary }: { itinerary: TripPlanResponse | null }) {
     );
   }
 
+  const { overview, fun_facts, must_try_food, hidden_gems, local_culture, travel_hacks, budget_info, places_covered } = resolvedItinerary;
+
   return (
-    <main className="mx-auto max-w-6xl px-6 pb-20 lg:px-8">
-      <div className="rounded-[2rem] border border-solid border-white/70 bg-white/80 p-8 shadow-soft dark:bg-slate-900/80 dark:border-slate-800">
-        <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
-          <div>
-            <p className="text-sm font-medium uppercase tracking-[0.3em] text-slate-500">Itinerary preview</p>
-            <h2 className="text-4xl font-semibold font-serif mt-1">{resolvedItinerary.request.destination}</h2>
-            <p className="mt-3 max-w-2xl text-slate-650 dark:text-slate-400 leading-relaxed">{resolvedItinerary.summary}</p>
+    <main className="relative overflow-hidden bg-[#dfeee5] px-4 py-8 pb-20 sm:px-6 lg:px-8">
+      <div className="relative mx-auto max-w-5xl rounded-[2rem] border border-[#aac7b4] bg-[#f2f8f3]/90 p-4 shadow-[0_18px_40px_rgba(45,90,71,0.08)] sm:p-6 lg:p-8">
+        <header className="pb-6 text-center border-b border-[#cfe1d4] mb-6">
+          <p className="text-[10px] font-bold uppercase tracking-[0.55em] text-[#2d5a47]/75">BEYOND TRAVEL GUIDE</p>
+          <h1 className="mt-2 font-serif text-4xl italic text-[#274b3d] sm:text-5xl">{resolvedItinerary.request.destination}</h1>
+          
+          <div className="mt-3 flex flex-wrap items-center justify-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-[#2d5a47]">
+            <span className="rounded-full bg-[#dbe8de] px-3 py-1">{resolvedItinerary.request.days} Days</span>
+            <span>•</span>
+            <span className="rounded-full bg-[#dbe8de] px-3 py-1">{resolvedItinerary.request.travel_style.replace('-', ' ')}</span>
+            <span>•</span>
+            <span className="rounded-full bg-[#dbe8de] px-3 py-1">{resolvedItinerary.request.party_type} ({resolvedItinerary.request.number_of_people} people)</span>
           </div>
-          <div className="rounded-[1.5rem] border border-solid border-slate-200 bg-slate-50/80 p-5 dark:bg-slate-900 dark:border-slate-800">
-            <p className="text-sm text-slate-500 dark:text-slate-400 font-semibold">Trip summary</p>
-            <div className="mt-2 flex flex-wrap gap-3 text-sm">
-              <span className="rounded-full bg-white dark:bg-slate-855 px-3 py-1 font-medium">Days: {resolvedItinerary.request.days}</span>
-              <span className="rounded-full bg-white dark:bg-slate-855 px-3 py-1 font-medium capitalize">Style: {resolvedItinerary.request.travel_style.replace('-', ' ')}</span>
-              <span className="rounded-full bg-white dark:bg-slate-855 px-3 py-1 font-medium capitalize">Group: {resolvedItinerary.request.party_type}</span>
+
+          {places_covered && places_covered.length > 1 && (
+            <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-[#274b3d]/80">Places Covered:</span>
+              {places_covered.map((place) => (
+                <span key={place} className="rounded-md border border-[#aac7b4] bg-white px-2.5 py-0.5 text-xs font-medium text-[#274b3d] shadow-sm">
+                  {sanitizeText(place)}
+                </span>
+              ))}
+            </div>
+          )}
+        </header>
+
+        {/* Story Overview */}
+        {overview && (
+          <div className="mb-6 rounded-[1.2rem] border border-[#b8d4c1] bg-gradient-to-br from-[#eaf4ed] to-[#f4f9f5] p-5 shadow-sm">
+            <div className="mb-2 text-[#2d5a47] font-semibold text-sm">
+              Destination Story & Vibe
+            </div>
+            <p className="text-base sm:text-lg leading-relaxed text-[#234537] italic font-serif">{sanitizeText(overview)}</p>
+          </div>
+        )}
+
+        {/* Fun Facts & Trivia Card Grid */}
+        {fun_facts && fun_facts.length > 0 && (
+          <div className="mb-6 rounded-[1.2rem] border border-[#d2e4d7] bg-white p-5 shadow-sm">
+            <h3 className="mb-3 text-base sm:text-lg font-bold text-[#244b3d]">
+              Did You Know? Fun Facts & Trivia
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {fun_facts.map((fact, idx) => (
+                <div key={idx} className="rounded-xl border border-[#e4eee7] bg-[#f9fcfa] p-3 text-sm sm:text-[15px] leading-relaxed text-slate-700 flex items-start gap-2">
+                  <span className="text-[#2d5a47] font-bold">#{idx + 1}</span>
+                  <span>{sanitizeText(fact)}</span>
+                </div>
+              ))}
             </div>
           </div>
-        </div>
+        )}
 
-        <div className="mt-8 space-y-6">
-          {resolvedItinerary.days.map((day, index) => (
-            <div key={`${day.date}-${index}`} className="rounded-[1.5rem] border border-solid border-slate-200 dark:border-slate-800 bg-gradient-to-r from-sky/10 via-white to-lilac/10 dark:from-slate-900 dark:via-slate-900 dark:to-slate-850 p-6">
-              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        {/* Must Try Food & Culinary Highlights */}
+        {must_try_food && must_try_food.length > 0 && (
+          <div className="mb-6 rounded-[1.2rem] border border-[#e2d5c3] bg-gradient-to-r from-[#fcf8f2] to-[#f9f5ed] p-5 shadow-sm">
+            <h3 className="mb-3 text-base sm:text-lg font-bold text-[#5c3e1e]">
+              Must-Try Local Cuisine & Dishes
+            </h3>
+            <div className="space-y-2">
+              {must_try_food.map((dish, idx) => (
+                <div key={idx} className="flex items-start gap-2 rounded-lg border border-[#ede2d3] bg-white/80 p-2.5 text-sm sm:text-[15px] text-[#4a341b]">
+                  <span className="text-amber-600 font-bold">•</span>
+                  <span>{sanitizeText(dish)}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Hidden Gems & Culture & Travel Hacks Grid */}
+        <div className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+          {hidden_gems && hidden_gems.length > 0 && (
+            <div className="rounded-[1.2rem] border border-[#cde0d3] bg-white p-4 shadow-sm">
+              <h4 className="mb-2.5 text-sm sm:text-base font-bold text-[#244b3d]">
+                Hidden Gems & Offbeat Spots
+              </h4>
+              <ul className="space-y-2 text-sm sm:text-[15px] text-slate-700">
+                {hidden_gems.map((gem, idx) => (
+                  <li key={idx} className="flex items-start gap-2">
+                    <span className="text-[#2d5a47]">•</span>
+                    <span>{sanitizeText(gem)}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {(local_culture || travel_hacks) && (
+            <div className="rounded-[1.2rem] border border-[#cde0d3] bg-white p-4 shadow-sm">
+              {local_culture && (
+                <div className="mb-3">
+                  <h4 className="mb-1.5 text-sm sm:text-base font-bold text-[#244b3d]">
+                    Local Culture & Etiquette
+                  </h4>
+                  <p className="text-sm sm:text-[15px] leading-relaxed text-slate-700">{sanitizeText(local_culture)}</p>
+                </div>
+              )}
+
+              {travel_hacks && travel_hacks.length > 0 && (
                 <div>
-                  <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">Day {index + 1}</p>
-                  <h3 className="text-2xl font-semibold font-serif mt-0.5">{day.theme}</h3>
-                </div>
-                <div className="rounded-full bg-white/80 dark:bg-slate-855 px-3 py-2 text-sm text-slate-650 dark:text-slate-400 border border-solid border-slate-100 dark:border-slate-800">{day.date}</div>
-              </div>
-
-              {/* Conditional weather rendering: hide if not visible, unknown or TBD */}
-              {day.weather && day.weather.trim() !== '' && day.weather !== 'Weather TBD' && day.weather !== 'unknown' && day.weather !== 'Weather data not available' && (
-                <div className="mt-4 rounded-[1.25rem] bg-white/80 dark:bg-slate-900/60 p-4 text-sm text-slate-655 dark:text-slate-350 border border-solid border-slate-100/50 dark:border-slate-800">
-                  🌤️ {day.weather}
-                </div>
-              )}
-
-              <div className="mt-6 grid gap-4 lg:grid-cols-3">
-                {(['morning', 'afternoon', 'evening'] as Array<keyof Pick<DayPlan, 'morning' | 'afternoon' | 'evening'>>).map((slot) => {
-                  const activities = Array.isArray(day[slot]) ? day[slot] : [];
-                  return (
-                    <div key={slot} className="rounded-[1.25rem] border border-solid border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-900/40 p-4 flex flex-col">
-                      <div className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">
-                        <span>{slot}</span>
-                      </div>
-                      <div className="flex-1 space-y-3">
-                        {activities.length ? activities.map((activity, activityIndex) => (
-                          <div key={`${slot}-${activityIndex}`} className="rounded-2xl bg-slate-50 dark:bg-slate-900/80 p-4 border border-solid border-slate-100/50 dark:border-slate-850 flex flex-col justify-between">
-                            <div>
-                              <div className="flex items-start justify-between gap-2">
-                                <p className="font-semibold text-slate-800 dark:text-slate-100 text-sm leading-snug">{activity.place}</p>
-                              </div>
-                              <p className="mt-1 text-[10px] font-bold text-slate-450 dark:text-slate-500 uppercase tracking-wider">{activity.time} • {activity.duration}</p>
-                              <p className="mt-0.5 text-[10px] font-bold text-indigo-500 dark:text-indigo-400 uppercase tracking-widest">{activity.category}</p>
-
-                              {activity.description && (
-                                <p className="mt-2 text-xs text-slate-650 dark:text-slate-350 leading-relaxed font-medium">{activity.description}</p>
-                              )}
-                            </div>
-                            {activity.tips && (
-                              <p className="mt-3 text-[11px] font-medium text-slate-550 dark:text-slate-400 border-t border-solid border-slate-200/30 dark:border-slate-800 pt-2 flex items-start gap-1">
-                                <span className="text-xs">💡</span>
-                                <span>{activity.tips}</span>
-                              </p>
-                            )}
-                          </div>
-                        )) : (
-                          <div className="h-full flex items-center justify-center py-6">
-                            <p className="text-xs text-slate-400 dark:text-slate-500 italic">Free time to wander.</p>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-
-              {day.notes && (
-                <div className="mt-5 rounded-[1.25rem] border border-solid border-slate-200 dark:border-slate-800 bg-white/70 dark:bg-slate-900/30 p-4 text-xs text-slate-600 dark:text-slate-400 leading-relaxed font-medium">
-                  {day.notes}
+                  <h4 className="mb-1.5 text-sm sm:text-base font-bold text-[#244b3d]">
+                    Insider Travel Hacks
+                  </h4>
+                  <ul className="space-y-1.5 text-sm sm:text-[15px] text-slate-700">
+                    {travel_hacks.map((hack, idx) => (
+                      <li key={idx} className="flex items-start gap-2">
+                        <span className="text-amber-600">✓</span>
+                        <span>{sanitizeText(hack)}</span>
+                      </li>
+                    ))}
+                  </ul>
                 </div>
               )}
             </div>
-          ))}
+          )}
         </div>
+
+        {budget_info && (
+          <div className="mb-6 rounded-xl border border-[#cfe1d4] bg-[#eaf4ed] p-3.5 text-sm sm:text-[15px] text-[#244b3d] flex items-center gap-2">
+            <span className="font-bold">Budget Advice:</span>
+            <span>{sanitizeText(budget_info)}</span>
+          </div>
+        )}
+
+        {/* Day-by-Day Experience — Collapsible Cards */}
+        <h2 className="mb-4 text-xl sm:text-2xl font-bold font-serif text-[#274b3d]">Day-by-Day Experience</h2>
+        <DayCardList
+          days={mutableDays}
+          destination={resolvedItinerary.request.destination}
+          travelStyle={resolvedItinerary.request.travel_style}
+          onDaysChange={setMutableDays}
+        />
       </div>
     </main>
+  );
+}
+
+/* ─── Footer ─────────────────────────────────────────────────────────────── */
+
+function Footer() {
+  return (
+    <footer className="border-t border-[#c6dccb] bg-[#1a382b] text-white">
+      <div className="mx-auto max-w-7xl px-6 py-14 lg:px-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-10">
+          {/* Brand Info */}
+          <div className="lg:col-span-2 space-y-4">
+            <div className="flex items-center gap-3">
+              <img src={logoImg} alt="Beyond Logo" className="h-12 w-auto brightness-0 invert" />
+              <span className="text-2xl font-bold tracking-[0.2em] font-serif text-white">BEYOND</span>
+            </div>
+            <p className="text-sm text-slate-300 leading-relaxed max-w-sm">
+              Intelligent travel planning crafted for the spirit of India. Adaptive day-by-day itineraries tailored around your pace, verified places, live weather, and seamless flexibility.
+            </p>
+            <div className="pt-2 flex flex-wrap items-center gap-2 text-xs text-[#a3d9bc]">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/10 border border-white/15">
+                <Sparkles size={13} className="text-[#f9c6d0]" /> Multi-Agent AI Core
+              </span>
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/10 border border-white/15">
+                <CheckCircle2 size={13} className="text-[#a3d9bc]" /> Verified Google Places
+              </span>
+            </div>
+          </div>
+
+          {/* Explore */}
+          <div>
+            <h4 className="text-xs font-bold uppercase tracking-[0.25em] text-[#a3d9bc] mb-4">Explore</h4>
+            <ul className="space-y-2.5 text-sm text-slate-300">
+              <li><a href="#destinations" className="hover:text-white transition-colors">Rajasthan Heritage</a></li>
+              <li><a href="#destinations" className="hover:text-white transition-colors">Kerala Backwaters</a></li>
+              <li><a href="#destinations" className="hover:text-white transition-colors">Kashmir Valleys</a></li>
+              <li><a href="#destinations" className="hover:text-white transition-colors">Himachal Heights</a></li>
+              <li><a href="#destinations" className="hover:text-white transition-colors">Goa Coastline</a></li>
+              <li><a href="#destinations" className="hover:text-white transition-colors">Meghalaya Trails</a></li>
+            </ul>
+          </div>
+
+          {/* How It Works */}
+          <div>
+            <h4 className="text-xs font-bold uppercase tracking-[0.25em] text-[#a3d9bc] mb-4">How It Works</h4>
+            <ul className="space-y-2.5 text-sm text-slate-300">
+              <li><a href="#how-it-works" className="hover:text-white transition-colors">Adaptive Weather Sync</a></li>
+              <li><a href="#how-it-works" className="hover:text-white transition-colors">1-Tap Place Swapper</a></li>
+              <li><a href="#how-it-works" className="hover:text-white transition-colors">Smart Pacing Engine</a></li>
+              <li><a href="#how-it-works" className="hover:text-white transition-colors">Zero-Friction Reschedule</a></li>
+              <li><Link to="/itinerary" className="hover:text-white transition-colors">My Itinerary View</Link></li>
+            </ul>
+          </div>
+
+          {/* Travel Styles */}
+          <div>
+            <h4 className="text-xs font-bold uppercase tracking-[0.25em] text-[#a3d9bc] mb-4">Travel Styles</h4>
+            <ul className="space-y-2.5 text-sm text-slate-300">
+              <li><span>🌿 Calm & Relaxed</span></li>
+              <li><span>⛰️ Adventure & Nature</span></li>
+              <li><span>🏛️ Historical & Cultural</span></li>
+              <li><span>🕉️ Spiritual & Peace</span></li>
+              <li><span>🎉 Party & Nightlife</span></li>
+              <li><span>🍲 Foodie & Culinary</span></li>
+            </ul>
+          </div>
+        </div>
+
+        {/* Bottom bar */}
+        <div className="mt-12 pt-8 border-t border-white/10 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-400">
+          <p>© {new Date().getFullYear()} Beyond Travel Technologies. All rights reserved.</p>
+          <p className="flex items-center gap-1.5">
+            Made with <Heart size={13} className="text-red-400 fill-red-400 inline" /> by <span className="text-white font-semibold">Pratishtha Sharma</span>
+          </p>
+          <div className="flex gap-6">
+            <a href="#privacy" className="hover:text-white transition-colors">Privacy Policy</a>
+            <a href="#terms" className="hover:text-white transition-colors">Terms of Service</a>
+          </div>
+        </div>
+      </div>
+    </footer>
   );
 }
 

@@ -1,4 +1,3 @@
-
 """Map frontend trip request/response shapes to the planner agent."""
 
 from __future__ import annotations
@@ -9,7 +8,17 @@ from pydantic import BaseModel, Field
 
 from planner_agent import PlannerState, create_initial_state
 
-TravelStyle = Literal["calm", "adventure", "historical-cultural", "spiritual"]
+TravelStyle = Literal[
+    "calm",
+    "adventure",
+    "adventure-nature",
+    "historical-cultural",
+    "spiritual",
+    "party",
+    "party-nightlife",
+    "culinary-foodie",
+    "foodie",
+]
 PartyType = Literal["solo", "couple", "friends", "family", "adventure-group"]
 
 
@@ -40,15 +49,21 @@ def trip_request_to_state(req: TripPlanRequest) -> PlannerState:
 def _map_activity(act: dict[str, Any]) -> dict[str, str]:
     description = act.get("description") or act.get("desc") or ""
     tips = act.get("tips") or act.get("tip") or ""
+    fun_fact = act.get("fun_fact") or act.get("funFact") or ""
+    image = act.get("image") or ""
 
-    return {
+    result = {
         "place": act.get("place") or act.get("name") or "Activity",
         "time": act.get("time") or "TBD",
         "duration": act.get("duration") or "1h",
         "category": act.get("category") or act.get("city") or "Explore",
         "description": description,
         "tips": tips,
+        "fun_fact": fun_fact,
     }
+    if image:
+        result["image"] = image
+    return result
 
 
 def _split_flat_activities(
@@ -75,9 +90,6 @@ def _transform_day(day: dict[str, Any]) -> dict[str, Any]:
         evening = [_map_activity(a) for a in day.get("evening", [])]
         evening.extend(_map_activity(a) for a in day.get("night", []))
     else:
-        # The LLM uses inconsistent key names for the flat activities list:
-        # 'activities', 'itinerary', 'places_to_visit', 'places', 'events', etc.
-        # Try all known variants, then fall back to any list-of-dicts value.
         flat = (
             day.get("activities")
             or day.get("itinerary")
@@ -86,7 +98,6 @@ def _transform_day(day: dict[str, Any]) -> dict[str, Any]:
             or day.get("events")
         )
         if not flat:
-            # Last resort: grab the first list-of-dicts value we find
             skip_keys = {"date", "day", "theme", "weather", "weather_summary",
                          "notes", "daily_notes", "city", "morning", "afternoon",
                          "evening", "night"}
@@ -132,7 +143,6 @@ def to_frontend_itinerary(req: TripPlanRequest, final_state: PlannerState) -> di
         summary += f" {data_warning}"
 
     general_tips = raw.get("general_tips") or []
-    # Normalise: planner sometimes returns a bare string instead of a list
     if isinstance(general_tips, str):
         general_tips = [general_tips] if general_tips.strip() else []
     days = [_transform_day(d) for d in days_raw]
@@ -142,8 +152,15 @@ def to_frontend_itinerary(req: TripPlanRequest, final_state: PlannerState) -> di
         last_notes = days[-1].get("notes", "")
         days[-1]["notes"] = f"{last_notes}\n\nTips: {tips_text}".strip()
 
-    return {
+    res = {
         "request": req.model_dump(),
         "summary": summary,
         "days": days,
     }
+
+    # Pass through rich dataset fields if available
+    for field in ("overview", "fun_facts", "must_try_food", "hidden_gems", "local_culture", "travel_hacks", "budget_info", "places_covered"):
+        if field in raw and raw[field]:
+            res[field] = raw[field]
+
+    return res

@@ -1,27 +1,28 @@
-# Environment
+# Environment & Secrets
 .env
-.env.*
 Backend/.env
 Frontend/.env
+Frontend/.env.local
 
-# Node
+# Frontend (Node, Vite build & TypeScript cache)
 node_modules/
+Frontend/node_modules/
+dist/
+Frontend/dist/
+*.tsbuildinfo
+Frontend/*.tsbuildinfo
 
-# Python
+# Backend (Python virtual env, caches & generated output)
 .venv/
 venv/
-env/
 __pycache__/
+Backend/__pycache__/
+Backend/Tools/__pycache__/
 *.py[cod]
+Backend/itinerary_output.json
 
-# Build
-dist/
-build/
-
-# IDE
+# IDE & OS
 .vscode/
 .idea/
-
-# OS
 .DS_Store
 Thumbs.db

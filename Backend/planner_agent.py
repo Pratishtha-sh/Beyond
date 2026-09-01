@@ -36,7 +36,8 @@ import os
 import re
 import sys
 from datetime import date, datetime, timedelta
-from typing import TypedDict, Optional
+from pathlib import Path
+from typing import Optional, TypedDict
 
 from dotenv import load_dotenv
 from groq import Groq
@@ -48,8 +49,13 @@ from Tools.get_weather import get_weather
 from Tools.google_places import search_google_places
 
 # ── Env ──────────────────────────────────────────────────────────────────────
-load_dotenv()
-GROQ_API_KEY = os.getenv("Groq_api_key")
+env_path = Path(__file__).parent / ".env"
+if env_path.exists():
+    load_dotenv(dotenv_path=env_path)
+else:
+    load_dotenv()
+
+GROQ_API_KEY = os.getenv("Groq_api_key") or os.getenv("GROQ_API_KEY")
 if not GROQ_API_KEY:
     raise EnvironmentError("Groq_api_key not found in .env file.")
 
@@ -415,8 +421,13 @@ def _summarize_weather(weather: dict, days: int) -> str:
 STYLE_QUERY_INTENT = {
     "calm": "peaceful tourist attractions gardens lakes museums scenic places",
     "adventure": "adventure outdoor tourist attractions nature trails viewpoints wildlife",
+    "adventure-nature": "adventure outdoor tourist attractions nature trails waterfalls viewpoints wildlife national parks",
     "historical-cultural": "famous forts palaces tombs museums heritage monuments cultural sites",
     "spiritual": "famous temples churches mosques gurudwaras pilgrimage sacred places",
+    "party": "vibrant beach shacks clubs nightlife promenades markets music venues sunset spots",
+    "party-nightlife": "vibrant beach shacks clubs nightlife promenades markets music venues sunset spots",
+    "culinary-foodie": "famous food streets night markets authentic local cuisine traditional cafes culinary landmarks",
+    "foodie": "famous food streets night markets authentic local cuisine traditional cafes culinary landmarks",
 }
 
 STYLE_PLACE_KEYWORDS = {
@@ -429,6 +440,11 @@ STYLE_PLACE_KEYWORDS = {
         "reserve", "waterfall", "beach", "cave", "viewpoint", "rafting",
         "paragliding", "zipline", "camp",
     },
+    "adventure-nature": {
+        "trek", "trail", "fort", "hill", "peak", "wildlife", "sanctuary",
+        "reserve", "waterfall", "beach", "cave", "viewpoint", "rafting",
+        "paragliding", "zipline", "camp", "forest", "safari", "valley",
+    },
     "historical-cultural": {
         "fort", "palace", "tomb", "mahal", "museum", "heritage", "monument",
         "temple", "stupa", "cave", "archaeological", "old", "chowk",
@@ -438,6 +454,22 @@ STYLE_PLACE_KEYWORDS = {
         "temple", "mandir", "dham", "math", "ashram", "mosque", "masjid",
         "dargah", "church", "cathedral", "gurudwara", "monastery", "stupa",
         "shrine", "ghat", "pilgrimage",
+    },
+    "party": {
+        "club", "bar", "pub", "beach", "shack", "cafe", "lounge", "bistro",
+        "promenade", "market", "night", "live", "sunset", "dj",
+    },
+    "party-nightlife": {
+        "club", "bar", "pub", "beach", "shack", "cafe", "lounge", "bistro",
+        "promenade", "market", "night", "live", "sunset", "dj",
+    },
+    "culinary-foodie": {
+        "food", "restaurant", "cafe", "dhaba", "bazaar", "market", "chowk",
+        "cuisine", "bakery", "sweet", "chaat", "rooftop", "street",
+    },
+    "foodie": {
+        "food", "restaurant", "cafe", "dhaba", "bazaar", "market", "chowk",
+        "cuisine", "bakery", "sweet", "chaat", "rooftop", "street",
     },
 }
 
@@ -571,7 +603,7 @@ def node_generate_itinerary(state: PlannerState) -> PlannerState:
     system_prompt = (
         "You are an expert travel planner for the Beyond app.\n"
         "Create a day-by-day itinerary as valid JSON only - no extra text.\n\n"
-        "PLANNING RULES:\n\n"
+        "PLANNING RULES:Do not add any emoji or Em dash in the generated text anywhere\n\n"
         f"Party type ({state['party_type']}):\n"
         "- couple: romantic, private - viewpoints at dusk, quiet gardens, intimate cafes.\n"
         "- friends: group fun - adventure parks, street food, nightlife etc.\n"
@@ -591,9 +623,9 @@ def node_generate_itinerary(state: PlannerState) -> PlannerState:
         "- If forecast data is unavailable, infer from the month and destination climate. In summer or hot months, keep outdoor places early morning or evening and put museums/indoor heritage stops after lunch.\n"
         "- Add weather-aware tips in daily notes or general tips, such as rain gear, hydration, sun protection, breathable clothing, or safer indoor alternates.\n\n"
         "Timing and pacing:\n"
-        "- Every activity must include time range like '09:00-10:30' and a realistic duration like '1.5h'.\n"
+        "- Every activity must include a realistic estimated duration like '1.5h' or '2h'. Do NOT include start/end time ranges or timestamps.\n"
         "- Do not pack too many stops. Most days should have 3-5 attractions maximum, plus lunch/snack/rest breaks.\n"
-        "- Include a lunch break around 12:30-14:00 and an optional snack/tea/rest break around 16:00-17:00 when the day has enough activities.\n"
+        "- Include a lunch break around midday and an optional snack/tea/rest break in the afternoon when the day has enough activities.\n"
         "- Each attraction must include a short description telling the traveller what to expect.\n"
         "- Do not include address or rating fields in activities.\n\n"
         "Places mapping:\n"
@@ -605,7 +637,7 @@ def node_generate_itinerary(state: PlannerState) -> PlannerState:
         + data_warning_instruction
         + "\n\n"
         "OUTPUT — ONLY this JSON, no other text.\n"
-        "Return a JSON object with keys: destination, cities_visited, total_days, party_type, travel_style, number_of_people, data_warning, days, general_tips. Each day must have date, theme, city, weather_summary, morning, afternoon, evening, daily_notes. Each activity must have place, time, duration, category, description, tip."
+        "Return a JSON object with keys: destination, cities_visited, total_days, party_type, travel_style, number_of_people, data_warning, days, general_tips. Each day must have date, theme, city, weather_summary, morning, afternoon, evening, daily_notes. Each activity must have place, duration, category, description, tip."
     )
 
     user_prompt = (
