@@ -6,7 +6,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-from planner_agent import PlannerState, create_initial_state
+from agents.planner_agent import PlannerState, create_initial_state
 
 TravelStyle = Literal[
     "calm",
@@ -46,21 +46,29 @@ def trip_request_to_state(req: TripPlanRequest) -> PlannerState:
     )
 
 
-def _map_activity(act: dict[str, Any]) -> dict[str, str]:
+def _map_activity(act: dict[str, Any]) -> dict[str, str] | None:
+    if not isinstance(act, dict):
+        return None
+
+    place = (act.get("place") or act.get("name") or "").strip()
+    if not place or place in ("-", "—", "Activity", "None", "null", "N/A", "TBD", "·", "•"):
+        return None
+
     description = act.get("description") or act.get("desc") or ""
     tips = act.get("tips") or act.get("tip") or ""
     fun_fact = act.get("fun_fact") or act.get("funFact") or ""
     image = act.get("image") or ""
 
     result = {
-        "place": act.get("place") or act.get("name") or "Activity",
+        "place": place,
         "time": act.get("time") or "TBD",
-        "duration": act.get("duration") or "1h",
+        "duration": act.get("duration") or "1.5h",
         "category": act.get("category") or act.get("city") or "Explore",
         "description": description,
         "tips": tips,
-        "fun_fact": fun_fact,
     }
+    if fun_fact:
+        result["fun_fact"] = fun_fact
     if image:
         result["image"] = image
     return result
@@ -73,22 +81,29 @@ def _split_flat_activities(
         return [], [], []
 
     mapped = [_map_activity(a) for a in activities]
-    count = len(mapped)
+    valid = [a for a in mapped if a is not None]
+    count = len(valid)
+    if count == 0:
+        return [], [], []
     if count == 1:
-        return mapped, [], []
+        return valid, [], []
     if count == 2:
-        return [mapped[0]], [mapped[1]], []
+        return [valid[0]], [valid[1]], []
 
     third = max(1, count // 3)
-    return mapped[:third], mapped[third : 2 * third], mapped[2 * third :]
+    return valid[:third], valid[third : 2 * third], valid[2 * third :]
 
 
 def _transform_day(day: dict[str, Any]) -> dict[str, Any]:
     if day.get("morning") or day.get("afternoon") or day.get("evening") or day.get("night"):
-        morning = [_map_activity(a) for a in day.get("morning", [])]
-        afternoon = [_map_activity(a) for a in day.get("afternoon", [])]
-        evening = [_map_activity(a) for a in day.get("evening", [])]
-        evening.extend(_map_activity(a) for a in day.get("night", []))
+        morning_raw = [_map_activity(a) for a in day.get("morning", [])]
+        afternoon_raw = [_map_activity(a) for a in day.get("afternoon", [])]
+        evening_raw = [_map_activity(a) for a in day.get("evening", [])]
+        evening_raw.extend([_map_activity(a) for a in day.get("night", [])])
+
+        morning = [a for a in morning_raw if a is not None]
+        afternoon = [a for a in afternoon_raw if a is not None]
+        evening = [a for a in evening_raw if a is not None]
     else:
         flat = (
             day.get("activities")
@@ -100,7 +115,7 @@ def _transform_day(day: dict[str, Any]) -> dict[str, Any]:
         if not flat:
             skip_keys = {"date", "day", "theme", "weather", "weather_summary",
                          "notes", "daily_notes", "city", "morning", "afternoon",
-                         "evening", "night"}
+                         "evening", "night", "hotel_options", "selected_hotel"}
             for k, v in day.items():
                 if k not in skip_keys and isinstance(v, list) and v and isinstance(v[0], dict):
                     flat = v
@@ -115,15 +130,22 @@ def _transform_day(day: dict[str, Any]) -> dict[str, Any]:
         day_num = day.get("day")
         theme = f"Day {day_num}" if day_num else "Explore"
 
-    return {
+    res_day: dict[str, Any] = {
         "date": day.get("date", ""),
         "theme": theme,
-        "weather": day.get("weather") or day.get("weather_summary") or "Weather TBD",
+        "weather": day.get("weather") or day.get("weather_summary") or "Sunny & pleasant",
         "morning": morning,
         "afternoon": afternoon,
         "evening": evening,
         "notes": day.get("notes") or day.get("daily_notes") or "",
     }
+
+    if day.get("hotel_options"):
+        res_day["hotel_options"] = day["hotel_options"]
+    if day.get("selected_hotel"):
+        res_day["selected_hotel"] = day["selected_hotel"]
+
+    return res_day
 
 
 def to_frontend_itinerary(req: TripPlanRequest, final_state: PlannerState) -> dict[str, Any]:
@@ -152,15 +174,42 @@ def to_frontend_itinerary(req: TripPlanRequest, final_state: PlannerState) -> di
         last_notes = days[-1].get("notes", "")
         days[-1]["notes"] = f"{last_notes}\n\nTips: {tips_text}".strip()
 
-    res = {
+    source = final_state.get("source") or raw.get("source") or (
+        "planner_agent" if ("budget_analysis" in final_state or "selected_transport" in final_state or "hotel_options" in final_state) else "general_planner"
+    )
+
+    res: dict[str, Any] = {
+        "source": source,
+        "planner_type": source,
         "request": req.model_dump(),
         "summary": summary,
         "days": days,
     }
 
-    # Pass through rich dataset fields if available
+    # Pass through rich dataset fields for general planner
     for field in ("overview", "fun_facts", "must_try_food", "hidden_gems", "local_culture", "travel_hacks", "budget_info", "places_covered"):
         if field in raw and raw[field]:
             res[field] = raw[field]
+
+    # Pass through flight, transport, hotels, and budget breakdown ONLY for planner agent
+    if source == "planner_agent":
+        best_flight = raw.get("best_flight") or final_state.get("selected_transport") or raw.get("transport")
+        if best_flight:
+            res["best_flight"] = best_flight
+            res["transport"] = best_flight
+
+        hotel_options = raw.get("hotel_options") or final_state.get("hotel_options")
+        if hotel_options:
+            res["hotel_options"] = hotel_options
+            for d in res["days"]:
+                if not d.get("hotel_options"):
+                    d["hotel_options"] = hotel_options
+                    d["selected_hotel"] = hotel_options[0]
+
+        budget_breakdown = raw.get("budget_breakdown") or (
+            final_state.get("budget_analysis", {}).get("breakdown") if isinstance(final_state.get("budget_analysis"), dict) else None
+        )
+        if budget_breakdown:
+            res["budget_breakdown"] = budget_breakdown
 
     return res

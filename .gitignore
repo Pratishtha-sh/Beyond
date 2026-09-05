@@ -18,6 +18,7 @@ venv/
 __pycache__/
 Backend/__pycache__/
 Backend/Tools/__pycache__/
+Backend/agents/__pycache__/
 *.py[cod]
 Backend/itinerary_output.json
 

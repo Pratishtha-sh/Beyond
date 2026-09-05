@@ -5,13 +5,16 @@ import {
   Bus,
   Car,
   Hotel,
+  Loader2,
   Plane,
   Send,
+  Sparkles,
   Train,
   Wallet,
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { chatPlan } from '../services/api';
 
 /* ─── Types ─────────────────────────────────────────────────────────────── */
 
@@ -91,23 +94,19 @@ function FilterCard({
   );
 }
 
-/* ─── Typing Indicator ───────────────────────────────────────────────────── */
+/* ─── Typing / Planning Indicator ────────────────────────────────────────── */
 
-function TypingIndicator() {
+function TypingIndicator({ status }: { status?: string }) {
   return (
     <div className="flex items-end gap-3 justify-start">
       <span className="w-8 h-8 rounded-full bg-gradient-to-br from-[#2d5a47] to-[#1c3d2f] flex items-center justify-center flex-shrink-0 shadow-md">
         <BrainCircuit size={14} className="text-white" />
       </span>
-      <div className="bg-white border border-[#dfeae2] rounded-2xl rounded-bl-none px-4 py-3 shadow-sm flex gap-1.5 items-center">
-        {[0, 0.18, 0.36].map((delay, i) => (
-          <motion.span
-            key={i}
-            className="w-1.5 h-1.5 rounded-full bg-[#2d5a47]/50"
-            animate={{ scale: [1, 1.5, 1], opacity: [0.5, 1, 0.5] }}
-            transition={{ duration: 0.9, repeat: Infinity, delay }}
-          />
-        ))}
+      <div className="bg-white border border-[#dfeae2] rounded-2xl rounded-bl-none px-4 py-3 shadow-sm flex gap-2.5 items-center">
+        <Loader2 size={15} className="animate-spin text-[#2d5a47]" />
+        <span className="text-xs sm:text-sm font-medium text-[#2d5a47]">
+          {status || 'Generating itinerary with LangGraph Planner…'}
+        </span>
       </div>
     </div>
   );
@@ -162,6 +161,7 @@ export default function BuildTripPage() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
+  const [planningStatus, setPlanningStatus] = useState('');
   const [filters, setFilters] = useState<QuickFilters>({ hotel: '', budget: '', transport: '' });
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -195,11 +195,37 @@ export default function BuildTripPage() {
     return `[Quick details — ${parts.join(' | ')}]`;
   };
 
+  const [showOriginModal, setShowOriginModal] = useState(false);
+  const [pendingText, setPendingText] = useState('');
+  const [customOrigin, setCustomOrigin] = useState('');
+
+  const COMMON_ORIGINS = ['Mumbai', 'Delhi', 'Bangalore', 'Kolkata', 'Hyderabad', 'Pune', 'Chennai', 'Ahmedabad'];
+
+  const triggerSendWithOrigin = (chosenOrigin: string) => {
+    setShowOriginModal(false);
+    const query = pendingText ? `[Departing from: ${chosenOrigin}] ${pendingText}` : `Departing from ${chosenOrigin}`;
+    setPendingText('');
+    setCustomOrigin('');
+    executeSendMessage(query);
+  };
+
   const sendMessage = (customText?: string) => {
     const rawText = customText ?? input;
     const text = rawText.trim();
-    if (!text) return;
+    if (!text || isTyping) return;
 
+    // Check if origin/source is already mentioned in query or filters
+    const hasOrigin = /\b(?:from|starting\s+from|departing\s+from|origin\s*:?|leaving\s+from)\s+[a-zA-Z]+/i.test(text);
+    if (!hasOrigin && !filters.transport?.toLowerCase().includes('from')) {
+      setPendingText(text);
+      setShowOriginModal(true);
+      return;
+    }
+
+    executeSendMessage(text);
+  };
+
+  const executeSendMessage = async (text: string) => {
     const contextNote = buildContextMessage();
     const fullText = contextNote ? `${contextNote}\n\n${text}` : text;
 
@@ -213,17 +239,44 @@ export default function BuildTripPage() {
     setMessages((prev) => [...prev, userMsg]);
     setInput('');
     setIsTyping(true);
+    setPlanningStatus('Connecting with Planner Agent & LangGraph…');
 
-    setTimeout(() => {
+    try {
+      setPlanningStatus('Searching places, hotels & transport…');
+      const result = await chatPlan({
+        query: fullText,
+        hotel_type: filters.hotel || undefined,
+        budget_tier: filters.budget || undefined,
+        transport_type: filters.transport || undefined,
+      });
+
+      if (result.itinerary && result.itinerary.days && result.itinerary.days.length > 0) {
+        setPlanningStatus('Itinerary ready! Opening experience…');
+        window.localStorage.setItem('beyond-itinerary', JSON.stringify(result.itinerary));
+        // Direct navigation to standard itinerary output view
+        navigate('/itinerary', { state: { itinerary: result.itinerary } });
+      } else {
+        const aiMsg: ChatMessage = {
+          id: `a-${Date.now()}`,
+          role: 'ai',
+          text: result.user_message || 'I have processed your request.',
+          timestamp: new Date(),
+        };
+        setMessages((prev) => [...prev, aiMsg]);
+      }
+    } catch (err: any) {
+      console.error('Chat plan error:', err);
       const aiMsg: ChatMessage = {
         id: `a-${Date.now()}`,
         role: 'ai',
-        text: getAiReply(text, filters),
+        text: 'Sorry, I encountered an issue connecting to the planner agent. Please try again.',
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, aiMsg]);
+    } finally {
       setIsTyping(false);
-    }, 1600 + Math.random() * 800);
+      setPlanningStatus('');
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -237,7 +290,7 @@ export default function BuildTripPage() {
 
   return (
     <div className="flex flex-col min-h-[calc(100vh-72px)] bg-gradient-to-b from-[#eaf5ee] via-[#f4faf6] to-[#fef9f4]">
-      {/* ── Page Header (matching hero section styling, compact) ── */}
+      {/* ── Page Header ── */}
       <div className="hero-stripes relative overflow-hidden border-b border-[#cfe1d4]/60">
         <div className="bg-white/25 backdrop-blur-[2px] px-6 py-5 md:py-6">
           <div className="mx-auto max-w-4xl">
@@ -262,7 +315,7 @@ export default function BuildTripPage() {
         </div>
       </div>
 
-      {/* ── Main Chat Area (Full Page Continuous Conversation) ── */}
+      {/* ── Main Chat Area ── */}
       <div className="mx-auto w-full max-w-4xl px-4 sm:px-6 lg:px-8 py-6 flex flex-col gap-6 flex-1">
         {/* ── Quick Filter Cards ── */}
         <div className="flex gap-3 flex-wrap">
@@ -321,8 +374,8 @@ export default function BuildTripPage() {
           </div>
         )}
 
-        {/* ── Conversation Stream (Continues directly in page) ── */}
-        {messages.length > 0 && (
+        {/* ── Conversation Stream ── */}
+        {(messages.length > 0 || isTyping) && (
           <div className="flex flex-col gap-4 py-2">
             <AnimatePresence initial={false}>
               {messages.map((msg) => (
@@ -335,7 +388,7 @@ export default function BuildTripPage() {
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0 }}
                 >
-                  <TypingIndicator />
+                  <TypingIndicator status={planningStatus} />
                 </motion.div>
               )}
             </AnimatePresence>
@@ -385,24 +438,25 @@ export default function BuildTripPage() {
                 ref={textareaRef}
                 id="trip-chat-input"
                 value={input}
+                disabled={isTyping}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="Describe your dream trip… e.g. '7-day spiritual retreat in Rajasthan with my partner, focused on forts & local cuisine'"
+                placeholder="Describe your dream trip… e.g. '7-day royal heritage & fort tour across Jaipur, Udaipur & Jodhpur with family'"
                 rows={1}
-                className="flex-1 resize-none border-0 outline-none bg-transparent text-slate-800 placeholder-slate-400 text-sm sm:text-base leading-relaxed py-1"
+                className="flex-1 resize-none border-0 outline-none bg-transparent text-slate-800 placeholder-slate-400 text-sm sm:text-base leading-relaxed py-1 disabled:opacity-60"
                 style={{ minHeight: '28px', maxHeight: '140px', fontFamily: 'Outfit, sans-serif' }}
               />
               <button
                 id="trip-chat-send"
                 onClick={() => sendMessage()}
-                disabled={!input.trim()}
+                disabled={!input.trim() || isTyping}
                 aria-label="Send message"
-                className={`flex-shrink-0 w-10 h-10 rounded-xl sm:rounded-2xl flex items-center justify-center transition-all duration-200 cursor-pointer border-0 ${input.trim()
+                className={`flex-shrink-0 w-10 h-10 rounded-xl sm:rounded-2xl flex items-center justify-center transition-all duration-200 cursor-pointer border-0 ${input.trim() && !isTyping
                   ? 'bg-[#2d5a47] text-white shadow-md hover:bg-[#214334] hover:scale-105 active:scale-95'
                   : 'bg-slate-100 text-slate-400 cursor-not-allowed'
                   }`}
               >
-                <Send size={16} />
+                {isTyping ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
               </button>
             </div>
           </div>
@@ -413,62 +467,108 @@ export default function BuildTripPage() {
               <kbd className="bg-white border border-slate-200 rounded px-1.5 py-0.5 font-mono text-[10px] shadow-2xs">
                 Enter ↵
               </kbd>{' '}
-              to send ·{' '}
+              to generate ·{' '}
               <kbd className="bg-white border border-slate-200 rounded px-1.5 py-0.5 font-mono text-[10px] shadow-2xs">
                 Shift + Enter
               </kbd>{' '}
               for new line
             </p>
             <p className="text-[11px] text-slate-400 hidden sm:block">
-              Beyond Travel Intelligence
+              Beyond Multi-Agent AI Core
             </p>
           </div>
         </div>
       </div>
+
+      {/* ── Missing Origin Dialog Pop-up Modal ── */}
+      <AnimatePresence>
+        {showOriginModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              className="w-full max-w-lg rounded-3xl bg-white p-6 sm:p-7 shadow-2xl border border-[#cfe1d4]"
+            >
+              <div className="flex items-center gap-3 mb-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#edf6ef] text-[#2d5a47]">
+                  <Plane size={20} />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-slate-800">Where are you starting from?</h3>
+                  <p className="text-xs text-slate-500">
+                    To calculate accurate transit options & budget, please select your departure city:
+                  </p>
+                </div>
+              </div>
+
+              {/* Quick city pills */}
+              <div className="my-4">
+                <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-2 block">
+                  Popular Starting Cities
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {COMMON_ORIGINS.map((city) => (
+                    <button
+                      key={city}
+                      onClick={() => triggerSendWithOrigin(city)}
+                      className="px-3.5 py-1.5 rounded-full text-xs font-semibold bg-[#f4faf6] hover:bg-[#2d5a47] text-[#244b3d] hover:text-white border border-[#cfe1d4] hover:border-[#2d5a47] transition-all cursor-pointer shadow-2xs"
+                    >
+                      {city}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Custom input */}
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (customOrigin.trim()) {
+                    triggerSendWithOrigin(customOrigin.trim());
+                  }
+                }}
+                className="mt-4 pt-3 border-t border-slate-100"
+              >
+                <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1.5 block">
+                  Or enter another departure city
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={customOrigin}
+                    onChange={(e) => setCustomOrigin(e.target.value)}
+                    placeholder="e.g. Lucknow, Chandigarh, Goa…"
+                    className="flex-1 rounded-xl border border-[#cfe1d4] bg-[#fbfdfb] px-4 py-2.5 text-sm text-slate-800 outline-none focus:border-[#2d5a47] focus:ring-1 focus:ring-[#2d5a47]"
+                  />
+                  <button
+                    type="submit"
+                    disabled={!customOrigin.trim()}
+                    className="rounded-xl bg-[#2d5a47] px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-white hover:bg-[#214334] disabled:opacity-50 cursor-pointer shadow-sm"
+                  >
+                    Continue
+                  </button>
+                </div>
+              </form>
+
+              <div className="mt-5 flex items-center justify-between pt-2">
+                <button
+                  onClick={() => setShowOriginModal(false)}
+                  className="text-xs text-slate-400 hover:text-slate-600 font-medium cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => triggerSendWithOrigin('Mumbai')}
+                  className="text-xs text-[#2d5a47] hover:underline font-semibold cursor-pointer"
+                >
+                  Skip & Use Mumbai (Default) →
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
-}
-
-/* ─── Placeholder AI reply logic ─────────────────────────────────────────── */
-
-function getAiReply(text: string, filters: QuickFilters): string {
-  const lower = text.toLowerCase();
-  const dest = extractDestination(lower);
-  const parts: string[] = [];
-
-  if (dest) {
-    parts.push(`${dest} is a wonderful choice! 🌿`);
-  } else {
-    parts.push('That sounds like an amazing journey!');
-  }
-
-  if (filters.budget) {
-    parts.push(`With a ${filters.budget} budget I can curate experiences that give you the best value.`);
-  }
-  if (filters.hotel) {
-    parts.push(`I'll look for ${filters.hotel.toLowerCase()} accommodations.`);
-  }
-  if (filters.transport) {
-    parts.push(`Noted — ${filters.transport} as your preferred way to travel.`);
-  }
-
-  parts.push(
-    "Could you tell me a bit more? For example — how many days, who you're travelling with, and the kind of vibe you're after (adventure, cultural, relaxed, foodie…)? The more you share, the better I can shape your itinerary. ✨"
-  );
-
-  return parts.join(' ');
-}
-
-function extractDestination(text: string): string | null {
-  const places = [
-    'rajasthan', 'kerala', 'goa', 'kashmir', 'himachal', 'meghalaya',
-    'uttarakhand', 'sikkim', 'ladakh', 'andaman', 'manali', 'jaipur',
-    'delhi', 'mumbai', 'bangalore', 'coorg', 'rishikesh', 'varanasi',
-  ];
-  for (const place of places) {
-    if (text.includes(place)) {
-      return place.charAt(0).toUpperCase() + place.slice(1);
-    }
-  }
-  return null;
 }

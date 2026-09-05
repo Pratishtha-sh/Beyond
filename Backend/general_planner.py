@@ -1,18 +1,4 @@
-"""
-general_planner.py — Beyond Project (Dataset-Powered General Itinerary Planner)
-=================================================================================
-Generates itineraries using pre-existing data from india_tourism_dataset.json
-instead of live API calls (weather, Google Places). When a destination or state is found
-in the dataset, the rich local data (attractions, activities, cuisine, culture,
-budget, fun facts, hidden gems, etc.) is fed to the Groq LLM to produce an enriched
-day-by-day itinerary with fun info and text.
-
-Flow:
-  1. Load destination_names.txt (with bracketed states) → index state-to-places mapping
-  2. Load india_tourism_dataset.json → index by id / name / state
-  3. find_destinations_for_query(user_input) → match state or specific place → list of dataset entries
-  4. generate_general_itinerary(…) → extract rich context → Groq LLM → enriched itinerary JSON
-"""
+"""General itinerary generator powered by regional tourism datasets and Groq LLM."""
 
 from __future__ import annotations
 
@@ -28,7 +14,7 @@ import httpx
 from dotenv import load_dotenv
 from groq import Groq
 
-# ── Env ──────────────────────────────────────────────────────────────────────
+# Env
 env_path = Path(__file__).parent / ".env"
 if env_path.exists():
     load_dotenv(dotenv_path=env_path)
@@ -48,28 +34,100 @@ PEXELS_API_KEY = (
     or os.getenv("PEXELS_API")
     or ""
 )
+TAVILY_API_KEY = (
+    os.getenv("Tavily_api")
+    or os.getenv("TAVILY_API_KEY")
+    or os.getenv("TAVILY_API")
+    or ""
+)
 
+# Curated high-resolution fallback photos by travel category (100% reliable CDN)
+CATEGORY_FALLBACK_IMAGES = {
+    "heritage": "https://images.pexels.com/photos/3581368/pexels-photo-3581368.jpeg",
+    "palace": "https://images.pexels.com/photos/1603650/pexels-photo-1603650.jpeg",
+    "fort": "https://images.pexels.com/photos/3581368/pexels-photo-3581368.jpeg",
+    "temple": "https://images.pexels.com/photos/2161467/pexels-photo-2161467.jpeg",
+    "beach": "https://images.pexels.com/photos/1450353/pexels-photo-1450353.jpeg",
+    "nature": "https://images.pexels.com/photos/15286/pexels-photo-15286.jpeg",
+    "mountain": "https://images.pexels.com/photos/417074/pexels-photo-417074.jpeg",
+    "food": "https://images.pexels.com/photos/958545/pexels-photo-958545.jpeg",
+    "market": "https://images.pexels.com/photos/1005638/pexels-photo-1005638.jpeg",
+    "viewpoint": "https://images.pexels.com/photos/1271619/pexels-photo-1271619.jpeg",
+    "culture": "https://images.pexels.com/photos/2161449/pexels-photo-2161449.jpeg",
+    "default": "https://images.pexels.com/photos/1007427/pexels-photo-1007427.jpeg",
+}
 
-def fetch_pexels_image(query: str, fallback_query: Optional[str] = None) -> Optional[str]:
+def _clean_place_name_for_search(name: str) -> str:
+    """Strips itinerary prefixes like 'Dinner at', 'Visit to', parentheticals, and em-dashes."""
+    if not name:
+        return ""
+    # Strip parentheticals and bracketed notes
+    cleaned = re.sub(r"\s*\(.*?\)", "", name)
+    cleaned = re.sub(r"\s*\[.*?\]", "", cleaned)
+    # Strip common itinerary action prefixes
+    cleaned = re.sub(
+        r"^(?:dinner\s+at|lunch\s+at|breakfast\s+at|morning\s+at|evening\s+at|afternoon\s+at|visit\s+to|visit|explore|tour\s+of|travel\s+to|relax\s+at|walk\s+through|stop\s+at)\s+",
+        "",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    # Replace em-dashes, arrows, punctuation with spaces
+    cleaned = re.sub(r"[–—→•·,:\-_/]+", " ", cleaned)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    return cleaned
+
+def _fetch_tavily_image(query: str) -> Optional[str]:
+    """Search Tavily for real place/attraction images when available."""
+    if not TAVILY_API_KEY:
+        return None
+    try:
+        with httpx.Client(timeout=5.0, verify=False) as client:
+            resp = client.post(
+                "https://api.tavily.com/search",
+                json={
+                    "api_key": TAVILY_API_KEY,
+                    "query": f"{query} photos tourism",
+                    "include_images": True,
+                    "max_results": 2,
+                    "search_depth": "basic",
+                },
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                images = data.get("images", [])
+                if images and isinstance(images, list) and len(images) > 0:
+                    img_url = images[0]
+                    if isinstance(img_url, str) and img_url.startswith("http"):
+                        return img_url
+    except Exception:
+        pass
+    return None
+
+def fetch_pexels_image(
+    query: str,
+    fallback_query: Optional[str] = None,
+    category: Optional[str] = None,
+) -> Optional[str]:
     """
-    Search Pexels API for a photo of the given place.
-    Endpoint: https://api.pexels.com/v1/search?query={place}&per_page=1
+    Multi-tier image search:
+    1. Pexels API with cleaned specific landmark/place name.
+    2. Tavily Search with include_images=True for genuine attraction photos.
+    3. Pexels search with broader city / landmark keyword.
+    4. Curated category travel photo fallback.
     """
-    if not PEXELS_API_KEY or not query:
+    clean_q = _clean_place_name_for_search(query)
+    if not clean_q:
         return None
 
-    # Clean query (remove parentheticals, clean commas)
-    clean_q = re.sub(r"\s*\(.*?\)", "", query)
-    clean_q = clean_q.replace(",", " ").strip()
-    clean_q = re.sub(r"\s+", " ", clean_q)
+    headers = {"Authorization": PEXELS_API_KEY} if PEXELS_API_KEY else {}
 
-    headers = {"Authorization": PEXELS_API_KEY}
-
-    def _query_api(term: str) -> Optional[str]:
+    def _query_pexels(term: str) -> Optional[str]:
+        if not PEXELS_API_KEY or not term.strip():
+            return None
         try:
-            with httpx.Client(timeout=6.0) as client:
+            with httpx.Client(timeout=5.0, verify=False) as client:
                 resp = client.get(
-                    f"https://api.pexels.com/v1/search?query={term}&per_page=1",
+                    f"https://api.pexels.com/v1/search?query={term.strip()}&per_page=1&orientation=landscape",
                     headers=headers,
                 )
                 if resp.status_code == 200:
@@ -78,35 +136,45 @@ def fetch_pexels_image(query: str, fallback_query: Optional[str] = None) -> Opti
                     if photos and len(photos) > 0:
                         src = photos[0].get("src", {})
                         return src.get("medium") or src.get("landscape") or src.get("small")
-        except Exception as exc:
-            print(f"[PEXELS] Error querying '{term}': {exc}")
+        except Exception:
+            pass
         return None
 
-    # 1. Full clean query
-    url = _query_api(clean_q)
+    # 1. Try Pexels with cleaned specific landmark name
+    url = _query_pexels(clean_q)
     if url:
         return url
 
-    # 2. Main place title (first 2-3 words)
+    # 2. Try Pexels with first 2-3 words (removes long subtitle noise)
     words = clean_q.split()
     if len(words) > 2:
-        url = _query_api(" ".join(words[:2]))
+        url = _query_pexels(" ".join(words[:3]))
         if url:
             return url
 
-    # 3. Fallback query if provided
+    # 3. Try Tavily Image Search for the exact landmark
+    tavily_img = _fetch_tavily_image(clean_q)
+    if tavily_img:
+        return tavily_img
+
+    # 4. Try with fallback query (e.g. "Amber Fort Jaipur")
     if fallback_query and fallback_query.strip():
-        fb_clean = fallback_query.replace(",", " ").strip()
-        if fb_clean != clean_q:
-            url = _query_api(fb_clean)
+        fb_clean = _clean_place_name_for_search(fallback_query)
+        if fb_clean and fb_clean != clean_q:
+            url = _query_pexels(fb_clean) or _fetch_tavily_image(fb_clean)
             if url:
                 return url
 
-    return None
+    # 5. Category-based fallback
+    cat_key = (category or "").lower().strip()
+    for k, fallback_url in CATEGORY_FALLBACK_IMAGES.items():
+        if k in cat_key or k in clean_q.lower():
+            return fallback_url
 
+    return CATEGORY_FALLBACK_IMAGES["default"]
 
 def attach_activity_images(itinerary: dict, destination: str) -> dict:
-    """Concurrently fetch and attach Pexels photo URLs to all activities in the itinerary."""
+    """Concurrently fetch and attach verified photo URLs to all activities in the itinerary."""
     if not isinstance(itinerary, dict) or "days" not in itinerary:
         return itinerary
 
@@ -120,28 +188,35 @@ def attach_activity_images(itinerary: dict, destination: str) -> dict:
     if not activities_to_fetch:
         return itinerary
 
+    # Primary destination name (first city in multi-city strings)
+    primary_dest = destination.split(",")[0].split()[0] if destination else ""
+
     def _fetch_for_act(act: dict):
         place_str = act.get("place") or act.get("name") or ""
-        img_url = fetch_pexels_image(place_str, fallback_query=f"{place_str} {destination}")
+        cat = act.get("category") or ""
+        img_url = fetch_pexels_image(
+            place_str,
+            fallback_query=f"{place_str} {primary_dest}".strip(),
+            category=cat,
+        )
         if img_url:
             act["image"] = img_url
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=6) as executor:
         list(executor.map(_fetch_for_act, activities_to_fetch))
 
     return itinerary
 
-# ── Paths ────────────────────────────────────────────────────────────────────
+# Paths
 DATA_DIR = Path(__file__).parent / "Data"
 DATASET_PATH = DATA_DIR / "india_tourism_dataset.json"
 DESTINATION_NAMES_PATH = DATA_DIR / "destination_names.txt"
 
-# ── Load dataset on module import ────────────────────────────────────────────
+# Load dataset on module import
 _dataset: list[dict] = []
 _destination_names: list[str] = []
 _state_to_dest_names: dict[str, list[str]] = {}
 _dest_name_to_state: dict[str, str] = {}
-
 
 def _normalize(name: str) -> str:
     """Lowercase, strip parenthetical qualifiers, collapse whitespace."""
@@ -152,7 +227,6 @@ def _normalize(name: str) -> str:
     name = re.sub(r"\s*\(.*?\)", "", name)
     name = re.sub(r"[^a-z0-9\s\-]", "", name)
     return re.sub(r"\s+", " ", name).strip()
-
 
 def _load_data() -> None:
     """Load the tourism dataset and destination names list."""
@@ -199,14 +273,10 @@ def _load_data() -> None:
     else:
         print(f"[GENERAL PLANNER] WARNING: Destination names not found at {DESTINATION_NAMES_PATH}")
 
-
 # Auto-load on import
 _load_data()
 
-
-# ─────────────────────────────────────────────────────────────────────────────
 # LLM helpers
-# ─────────────────────────────────────────────────────────────────────────────
 
 def _llm(system: str, user: str, temperature: float = 0.3) -> str:
     response = groq_client.chat.completions.create(
@@ -220,7 +290,6 @@ def _llm(system: str, user: str, temperature: float = 0.3) -> str:
         ],
     )
     return response.choices[0].message.content.strip()
-
 
 def _extract_json(text: str) -> dict | list:
     text = re.sub(r"```(?:json)?", "", text).replace("```", "").strip()
@@ -254,15 +323,11 @@ def _extract_json(text: str) -> dict | list:
     except json.JSONDecodeError:
         raise
 
-
-# ─────────────────────────────────────────────────────────────────────────────
 # Destination & State lookup
-# ─────────────────────────────────────────────────────────────────────────────
 
 def is_known_destination(name: str) -> bool:
     """Quick check if a destination or state is in the dataset or destination_names.txt."""
     return len(find_destinations_for_query(name)) > 0
-
 
 def find_destinations_for_query(name: str) -> list[dict]:
     """
@@ -318,12 +383,10 @@ def find_destinations_for_query(name: str) -> list[dict]:
 
     return []
 
-
 def find_destination(name: str) -> Optional[dict]:
     """Backward compatibility helper returning single dataset entry or None."""
     matches = find_destinations_for_query(name)
     return matches[0] if matches else None
-
 
 def get_all_destination_names() -> list[str]:
     """Return all known destination names from destination_names.txt / dataset."""
@@ -331,10 +394,7 @@ def get_all_destination_names() -> list[str]:
         return _destination_names
     return [entry.get("destination_name", "") for entry in _dataset if entry.get("destination_name")]
 
-
-# ─────────────────────────────────────────────────────────────────────────────
 # Dataset context extraction
-# ─────────────────────────────────────────────────────────────────────────────
 
 def _extract_dataset_context(entries: list[dict]) -> str:
     """
@@ -407,10 +467,7 @@ def _extract_dataset_context(entries: list[dict]) -> str:
 
     return "\n".join(sections)
 
-
-# ─────────────────────────────────────────────────────────────────────────────
 # Enriched Itinerary generation
-# ─────────────────────────────────────────────────────────────────────────────
 
 def generate_general_itinerary(
     destination: str,
@@ -461,7 +518,7 @@ def generate_general_itinerary(
 
     system_prompt = (
         "You are an expert travel storyteller and itinerary planner for the Beyond app.\n"
-        "Generate a rich, vibrant, and fun day-by-day travel itinerary as valid JSON only — no extra text.\n\n"
+        "Generate a structured, engaging day-by-day travel itinerary as valid JSON only — no extra text.\n\n"
         "CRITICAL TEXT RULE: No emojis or emoji-like symbols and em dashes are allowed anywhere in any generated text field\n\n"
         "IMPORTANT DATA RULE:\n"
         "You are given REAL CURATED DATA about the destination/state from the Indian Tourism Dataset.\n"
@@ -527,7 +584,7 @@ def generate_general_itinerary(
         itinerary = _extract_json(raw)
         if isinstance(itinerary, list):
             itinerary = {"days": itinerary}
-        
+
         # Attach real place photos from Pexels
         itinerary = attach_activity_images(itinerary, dest_display_name)
     except (json.JSONDecodeError, ValueError) as e:
@@ -537,10 +594,7 @@ def generate_general_itinerary(
     print(f"[GENERAL PLANNER] [OK] Enriched itinerary generated for '{dest_display_name}'.")
     return itinerary
 
-
-# ─────────────────────────────────────────────────────────────────────────────
 # Swap alternatives — query generation
-# ─────────────────────────────────────────────────────────────────────────────
 
 def generate_swap_query(
     place: str,
@@ -596,7 +650,6 @@ def generate_swap_query(
 
     # Heuristic fallback
     return f"{category} attractions near {city} India"
-
 
 def enrich_swap_alternatives(
     places: list[dict],

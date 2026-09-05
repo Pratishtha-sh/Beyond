@@ -1,16 +1,16 @@
 import { AnimatePresence, motion } from 'framer-motion';
-import { ArrowRight, BrainCircuit, Calendar, CheckCircle2, Clock, CloudSun, Compass, Heart, Map, MapPin, Plus, RefreshCw, Send, Sparkles, Star, Trash2, Users, Wallet, Wand2, X } from 'lucide-react';
+import { ArrowRight, BrainCircuit, Bus, Calendar, Car, CheckCircle2, Clock, CloudSun, Compass, CreditCard, ExternalLink, Flame, Flower2, Heart, Home, Hotel, Landmark, Loader2, Map, MapPin, Mountain, Music, Navigation, Palmtree, Plane, Plus, RefreshCw, Send, Sparkles, Star, Train, Trash2, User, Users, Utensils, UtensilsCrossed, Wallet, Wand2, X } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import BuildTripPage from './components/BuildTripPage';
 import Carousel from './components/Carousel';
 import { destinations } from './data/destinations';
-import logoImg from './data/doodles/logo.png';
+import logoImg from './data/images/logo.png';
 import rajasthanImg from './data/images/rajasthan/rajasthan.jpg';
 import kerelaImg from './data/images/kerela.jpg';
 import goaImg from './data/images/Goa/goa.avif';
-import { addActivity, fetchSwapAlternatives } from './services/api';
-import { healthCheck, planTrip, planTripGeneral } from './services/api';
+import { addActivity, applyOptimization, chatPlan, fetchSwapAlternatives, healthCheck, planTrip, planTripGeneral } from './services/api';
+import type { OptimizationConfirmation, TransportAlternative } from './services/api';
 import type { ActivityItem, DayPlan, Destination, SwapAlternative, TripPlanResponse, TripWizardValues } from './types';
 
 const initialValues: TripWizardValues = {
@@ -64,6 +64,25 @@ function App() {
       window.localStorage.removeItem('beyond-itinerary');
     }
   }, [itinerary]);
+
+  const scrollToChooseTravel = (e?: React.MouseEvent) => {
+    if (e) e.preventDefault();
+    if (location.pathname !== '/') {
+      navigate('/', { state: { scrollToDestinations: true } });
+    } else {
+      const el = document.getElementById('destinations') || document.getElementById('choose-travel');
+      el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  };
+
+  useEffect(() => {
+    if (location.pathname === '/' && (location.state as any)?.scrollToDestinations) {
+      setTimeout(() => {
+        const el = document.getElementById('destinations') || document.getElementById('choose-travel');
+        el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 100);
+    }
+  }, [location]);
 
   const handleSubmit = async () => {
     setIsLoading(true);
@@ -169,26 +188,38 @@ function App() {
         );
       case 3:
         return (
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
             {[
-              { id: 'calm', name: 'Calm & Relaxed', desc: 'Quiet mornings, scenic views & slow days', emoji: '🌿' },
-              { id: 'adventure-nature', name: 'Adventure & Nature', desc: 'Treks, rapids, ridgelines & wilderness', emoji: '⛰️' },
-              { id: 'historical-cultural', name: 'Historical & Cultural', desc: 'Forts, palaces, heritage & lore', emoji: '🏛️' },
-              { id: 'spiritual', name: 'Spiritual & Peace', desc: 'Temples, shrines, sacred ghats & calm', emoji: '🕉️' },
-              { id: 'party-nightlife', name: 'Party & Nightlife', desc: 'Beach shacks, live beats & sunset vibes', emoji: '🎉' },
-              { id: 'culinary-foodie', name: 'Foodie & Culinary', desc: 'Street food trails, iconic eats & cafes', emoji: '🍲' },
+              { id: 'calm', name: 'Calm & Relaxed', desc: 'Quiet mornings, scenic views & slow days', icon: Palmtree },
+              { id: 'adventure-nature', name: 'Adventure & Nature', desc: 'Treks, rapids, ridgelines & wilderness', icon: Mountain },
+              { id: 'historical-cultural', name: 'Historical & Cultural', desc: 'Forts, palaces, heritage & lore', icon: Landmark },
+              { id: 'spiritual', name: 'Spiritual & Peace', desc: 'Temples, shrines, sacred ghats & calm', icon: Flower2 },
+              { id: 'party-nightlife', name: 'Party & Nightlife', desc: 'Beach shacks, live beats & sunset vibes', icon: Music },
+              { id: 'culinary-foodie', name: 'Foodie & Culinary', desc: 'Street food trails, iconic eats & cafes', icon: UtensilsCrossed },
             ].map((style) => {
               const isSelected = values.travelStyle === style.id;
+              const Icon = style.icon;
               return (
                 <button
                   key={style.id}
+                  type="button"
                   onClick={() => setValues((prev) => ({ ...prev, travelStyle: style.id as any }))}
-                  className={`p-4 text-left border-2 transition-all cursor-pointer flex flex-col justify-between h-28 rounded-none ${isSelected ? 'bg-[#2d5a47] text-white border-[#2d5a47]' : 'bg-slate-50 border-slate-300 text-slate-800 hover:bg-slate-100 dark:bg-slate-850 dark:border-slate-700 dark:text-slate-100'}`}
+                  className={`p-3.5 sm:p-4 text-left border-2 transition-all cursor-pointer flex flex-col justify-between min-h-[118px] h-full rounded-none ${isSelected
+                    ? 'bg-[#2d5a47] text-white border-[#2d5a47] shadow-sm'
+                    : 'bg-slate-50 border-slate-300 text-slate-800 hover:bg-slate-100 hover:border-slate-400 dark:bg-slate-850 dark:border-slate-700 dark:text-slate-100'
+                    }`}
                 >
-                  <span className="text-2xl">{style.emoji}</span>
+                  <div
+                    className={`w-8 h-8 flex items-center justify-center mb-2 transition-colors ${isSelected ? 'bg-white/15 text-white' : 'bg-[#edf6ef] text-[#2d5a47] dark:bg-slate-750 dark:text-[#a3d9bc]'
+                      }`}
+                  >
+                    <Icon size={16} strokeWidth={2.2} />
+                  </div>
                   <div>
-                    <h4 className="font-semibold text-sm">{style.name}</h4>
-                    <p className={`text-[11px] mt-0.5 ${isSelected ? 'text-slate-200' : 'text-slate-500'}`}>{style.desc}</p>
+                    <h4 className="font-semibold text-xs sm:text-[13px] leading-snug">{style.name}</h4>
+                    <p className={`text-[11px] leading-relaxed mt-1 ${isSelected ? 'text-slate-200' : 'text-slate-500 dark:text-slate-400'}`}>
+                      {style.desc}
+                    </p>
                   </div>
                 </button>
               );
@@ -231,25 +262,37 @@ function App() {
         );
       case 5:
         return (
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
             {[
-              { id: 'solo', name: 'Solo Explorer', desc: 'Just you and the open road', emoji: '👤' },
-              { id: 'couple', name: 'Couple', desc: 'Romantic stays, cozy spots', emoji: '💕' },
-              { id: 'friends', name: 'Friends', desc: 'Group fun, sights, and food', emoji: '🍻' },
-              { id: 'family', name: 'Family', desc: 'Kid-friendly pacing', emoji: '👪' },
-              { id: 'adventure-group', name: 'Adventure Group', desc: 'High energy outdoor', emoji: '🧗' },
+              { id: 'solo', name: 'Solo Explorer', desc: 'Just you and the open road', icon: User },
+              { id: 'couple', name: 'Couple', desc: 'Romantic stays, cozy spots', icon: Heart },
+              { id: 'friends', name: 'Friends', desc: 'Group fun, sights, and food', icon: Users },
+              { id: 'family', name: 'Family', desc: 'Kid-friendly pacing & comfort', icon: Home },
+              { id: 'adventure-group', name: 'Adventure Group', desc: 'High energy outdoor trails', icon: Flame },
             ].map((party) => {
               const isSelected = values.partyType === party.id;
+              const Icon = party.icon;
               return (
                 <button
                   key={party.id}
+                  type="button"
                   onClick={() => setValues((prev) => ({ ...prev, partyType: party.id as any }))}
-                  className={`p-4 text-left border-2 transition-all cursor-pointer flex flex-col justify-between h-28 rounded-none ${isSelected ? 'bg-[#2d5a47] text-white border-[#2d5a47]' : 'bg-slate-50 border-slate-300 text-slate-800 hover:bg-slate-100 dark:bg-slate-850 dark:border-slate-700 dark:text-slate-100'}`}
+                  className={`p-3.5 sm:p-4 text-left border-2 transition-all cursor-pointer flex flex-col justify-between min-h-[118px] h-full rounded-none ${isSelected
+                    ? 'bg-[#2d5a47] text-white border-[#2d5a47] shadow-sm'
+                    : 'bg-slate-50 border-slate-300 text-slate-800 hover:bg-slate-100 hover:border-slate-400 dark:bg-slate-850 dark:border-slate-700 dark:text-slate-100'
+                    }`}
                 >
-                  <span className="text-2xl">{party.emoji}</span>
+                  <div
+                    className={`w-8 h-8 flex items-center justify-center mb-2 transition-colors ${isSelected ? 'bg-white/15 text-white' : 'bg-[#edf6ef] text-[#2d5a47] dark:bg-slate-750 dark:text-[#a3d9bc]'
+                      }`}
+                  >
+                    <Icon size={16} strokeWidth={2.2} />
+                  </div>
                   <div>
-                    <h4 className="font-semibold text-sm">{party.name}</h4>
-                    <p className={`text-[11px] mt-0.5 ${isSelected ? 'text-slate-200' : 'text-slate-500'}`}>{party.desc}</p>
+                    <h4 className="font-semibold text-xs sm:text-[13px] leading-snug">{party.name}</h4>
+                    <p className={`text-[11px] leading-relaxed mt-1 ${isSelected ? 'text-slate-200' : 'text-slate-500 dark:text-slate-400'}`}>
+                      {party.desc}
+                    </p>
                   </div>
                 </button>
               );
@@ -296,7 +339,7 @@ function App() {
           </Link>
           <nav className="hidden md:flex items-center gap-8">
             <Link to="/" className="text-sm font-medium text-[#2d5a47]/70 hover:text-[#2d5a47] transition-colors">Home</Link>
-            <a href="#destinations" className="text-sm font-medium text-[#2d5a47]/70 hover:text-[#2d5a47] transition-colors" onClick={(e) => { e.preventDefault(); document.getElementById('destinations')?.scrollIntoView({ behavior: 'smooth' }); }}>Destinations</a>
+            <a href="#destinations" className="text-sm font-medium text-[#2d5a47]/70 hover:text-[#2d5a47] transition-colors" onClick={scrollToChooseTravel}>Destinations</a>
             <Link to="/itinerary" className="text-sm font-medium text-[#2d5a47]/70 hover:text-[#2d5a47] transition-colors">My Trips</Link>
           </nav>
           <button
@@ -345,9 +388,7 @@ function App() {
                     {/* CTAs below carousel */}
                     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.5, delay: 0.5 }} className="mt-12 flex flex-wrap gap-3 justify-center">
                       <button
-                        onClick={() => {
-                          document.getElementById('destinations')?.scrollIntoView({ behavior: 'smooth' });
-                        }}
+                        onClick={scrollToChooseTravel}
                         className="rounded-full bg-[#2d5a47] px-6 py-3 text-sm font-medium text-white shadow-soft border-0 cursor-pointer hover:bg-[#234a3a] transition-colors"
                       >
                         Explore Destinations
@@ -367,7 +408,7 @@ function App() {
                 </section>
 
                 {/* SECTION 1 — Choose how you want to travel */}
-                <section id="choose-travel" className="py-16 md:py-24 bg-gradient-to-b from-[#f2f8f3] to-[#eaf4ed] border-y border-[#d0e2d5]">
+                <section id="destinations" className="scroll-mt-20 py-16 md:py-24 bg-gradient-to-b from-[#f2f8f3] to-[#eaf4ed] border-y border-[#d0e2d5]">
                   <div className="mx-auto max-w-7xl px-6 lg:px-8">
                     <div className="text-center max-w-3xl mx-auto mb-14">
                       <p className="text-xs font-bold uppercase tracking-[0.35em] text-[#2d5a47]/75 mb-2">
@@ -449,7 +490,7 @@ function App() {
                         className="group relative flex flex-col justify-between rounded-[2rem] border-2 border-[#cfe1d4] bg-gradient-to-br from-white via-[#f8fcf9] to-[#edf6f0] p-7 sm:p-9 shadow-[0_12px_32px_rgba(45,90,71,0.06)] hover:shadow-[0_20px_48px_rgba(45,90,71,0.12)] hover:border-[#8ec5a7] transition-all duration-300 overflow-hidden"
                       >
                         <div className="relative z-10">
-                          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#f9c6d0]/40 border border-[#f9c6d0] text-[10px] font-bold uppercase tracking-[0.2em] text-[#6b2c3a] mb-4">
+                          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#edf6ef]/40 border border-[#cfe1d4] text-[10px] font-bold uppercase tracking-[0.2em] text-[#2d5a47] mb-4">
                             <Sparkles size={12} /> I already have a trip in mind
                           </span>
                           <h3 className="text-2xl sm:text-3xl font-bold font-serif text-[#244b3d] mb-3">
@@ -463,7 +504,7 @@ function App() {
                             onClick={() => navigate('/build-trip')}
                             className="inline-flex items-center gap-2 rounded-full bg-[#1c3d2f] px-6 py-3 text-sm font-semibold text-white shadow-md hover:bg-[#12281e] transition-all cursor-pointer border-0 group-hover:gap-3"
                           >
-                            Build My Trip <Wand2 size={15} className="text-[#f9c6d0]" />
+                            Build My Trip <ArrowRight size={15} />
                           </button>
                         </div>
 
@@ -487,9 +528,6 @@ function App() {
                               </span>
                               <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[#edf6ef] text-[11px] font-semibold text-[#2d5a47]">
                                 <Users size={12} className="text-[#2d5a47]" /> Solo to Big Groups
-                              </span>
-                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[#fef5ea] text-[11px] font-semibold text-[#b45309]">
-                                <Sparkles size={12} className="text-[#b45309]" /> 6 Curated Travel Styles
                               </span>
                             </div>
                           </div>
@@ -535,7 +573,7 @@ function App() {
               exit={{ scale: 0.95, opacity: 0 }}
               className="hero-stripes w-full max-w-4xl p-5 sm:p-9 border-4 border-solid border-[#2d5a47] shadow-2xl relative rounded-none"
             >
-              {/* 2) White Input Box inside green stripe box without soft curves */}
+              {/* Wizard Content Card */}
               <div className="bg-white dark:bg-slate-900 border-2 border-solid border-slate-300 dark:border-slate-800 p-6 sm:p-10 shadow-xl relative rounded-none">
                 <button
                   onClick={() => setIsWizardOpen(false)}
@@ -552,35 +590,32 @@ function App() {
                   <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 font-medium">Six tiny questions. One dreamy itinerary at the end.</p>
                 </div>
 
-                {/* Grid layout: Left = Step content, Right = Teenager traveler doodle */}
-                <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-center">
-                  <div className="md:col-span-8 space-y-4">
-                    {/* Progress bar */}
-                    <div>
-                      <div className="flex justify-between items-center text-[10px] font-extrabold uppercase tracking-wider text-slate-400 mb-1.5">
-                        <span>STEP {step + 1} OF 7</span>
-                        <span>{Math.round(((step + 1) / 7) * 100)}%</span>
-                      </div>
-                      <div className="h-2 w-full bg-slate-200 dark:bg-slate-800 overflow-hidden border border-solid border-slate-300 dark:border-slate-700 rounded-none">
-                        <div
-                          className="h-full bg-[#2d5a47] transition-all duration-300"
-                          style={{ width: `${((step + 1) / 7) * 100}%` }}
-                        />
-                      </div>
+                {/* Step content container */}
+                <div className="w-full space-y-4">
+                  {/* Progress bar */}
+                  <div>
+                    <div className="flex justify-between items-center text-[10px] font-extrabold uppercase tracking-wider text-slate-400 mb-1.5">
+                      <span>STEP {step + 1} OF 7</span>
+                      <span>{Math.round(((step + 1) / 7) * 100)}%</span>
                     </div>
-
-                    {/* Question title & subtitle */}
-                    <div>
-                      <h3 className="font-serif text-2xl sm:text-3xl font-bold text-slate-900 dark:text-slate-100">{stepTitles[step]}</h3>
-                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{stepSubtitles[step]}</p>
-                    </div>
-
-                    {/* Render Step Content */}
-                    <div className="min-h-[190px] pt-1">
-                      {renderStepContent(step)}
+                    <div className="h-2 w-full bg-slate-200 dark:bg-slate-800 overflow-hidden border border-solid border-slate-300 dark:border-slate-700 rounded-none">
+                      <div
+                        className="h-full bg-[#2d5a47] transition-all duration-300"
+                        style={{ width: `${((step + 1) / 7) * 100}%` }}
+                      />
                     </div>
                   </div>
 
+                  {/* Question title & subtitle */}
+                  <div>
+                    <h3 className="font-serif text-2xl sm:text-3xl font-bold text-slate-900 dark:text-slate-100">{stepTitles[step]}</h3>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{stepSubtitles[step]}</p>
+                  </div>
+
+                  {/* Render Step Content */}
+                  <div className="min-h-[190px] pt-1">
+                    {renderStepContent(step)}
+                  </div>
                 </div>
 
                 {/* Bottom Action Buttons */}
@@ -740,11 +775,10 @@ function ReschedulePicker({
           key={slot.id}
           onClick={() => { if (slot.id !== currentSlot) { onSelect(slot.id); onClose(); } }}
           disabled={slot.id === currentSlot}
-          className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors cursor-pointer border-0 text-left ${
-            slot.id === currentSlot
-              ? 'bg-[#edf6ef] text-[#2d5a47]/40 cursor-not-allowed'
-              : 'hover:bg-[#f0f9f3] text-slate-700 hover:text-[#2d5a47]'
-          }`}
+          className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors cursor-pointer border-0 text-left ${slot.id === currentSlot
+            ? 'bg-[#edf6ef] text-[#2d5a47]/40 cursor-not-allowed'
+            : 'hover:bg-[#f0f9f3] text-slate-700 hover:text-[#2d5a47]'
+            }`}
         >
           <span>{slot.icon}</span>
           {slot.label}
@@ -933,6 +967,10 @@ function ActivityCard({
   const [showReschedule, setShowReschedule] = useState(false);
   const [showSwap, setShowSwap] = useState(false);
 
+  if (!activity || !activity.place || !activity.place.trim() || activity.place.trim() === '-' || activity.place.trim() === '—') {
+    return null;
+  }
+
   return (
     <>
       <motion.div
@@ -947,10 +985,10 @@ function ActivityCard({
         <div className="flex items-center justify-between gap-2 mb-2">
           <div className="flex items-center gap-2 flex-wrap min-w-0">
             <span className="rounded-full bg-[#e8f3eb] px-2.5 py-0.5 text-[8px] font-bold uppercase tracking-[0.18em] text-[#2d5a47] whitespace-nowrap">
-              {activity.category}
+              {activity.category || 'Explore'}
             </span>
             <span className="text-[11px] sm:text-[12px] font-semibold text-slate-500 whitespace-nowrap">
-              {activity.duration}
+              {activity.duration || '1.5h'}
             </span>
           </div>
 
@@ -1211,15 +1249,33 @@ function DayCardList({
   days,
   destination,
   travelStyle,
+  isPlannerAgent = false,
   onDaysChange,
 }: {
   days: DayPlan[];
   destination: string;
   travelStyle: string;
+  isPlannerAgent?: boolean;
   onDaysChange: (days: DayPlan[]) => void;
 }) {
-  const [expandedDay, setExpandedDay] = useState<number | null>(null);
+  const [expandedDays, setExpandedDays] = useState<Set<number>>(() => new Set(days.map((_, i) => i)));
   const [toasts, setToasts] = useState<UndoToast[]>([]);
+
+  useEffect(() => {
+    setExpandedDays(new Set(days.map((_, i) => i)));
+  }, [days.length]);
+
+  const toggleDay = useCallback((index: number) => {
+    setExpandedDays((prev) => {
+      const next = new Set(prev);
+      if (next.has(index)) {
+        next.delete(index);
+      } else {
+        next.add(index);
+      }
+      return next;
+    });
+  }, []);
 
   const dismissToast = useCallback((id: string) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
@@ -1258,7 +1314,7 @@ function DayCardList({
     };
     onDaysChange(days.map((d, di) => {
       if (di !== dayIdx) return d;
-      const newSlot = [...d[slot]];
+      const newSlot = [...(Array.isArray(d[slot]) ? d[slot] : [])];
       newSlot[actIdx] = replacement;
       return { ...d, [slot]: newSlot };
     }));
@@ -1266,13 +1322,16 @@ function DayCardList({
 
   const rescheduleActivity = useCallback((dayIdx: number, fromSlot: keyof Pick<DayPlan, 'morning' | 'afternoon' | 'evening'>, actIdx: number, toSlot: 'morning' | 'afternoon' | 'evening') => {
     if (fromSlot === toSlot) return;
-    const activity = days[dayIdx][fromSlot][actIdx];
+    const fromList = Array.isArray(days[dayIdx][fromSlot]) ? days[dayIdx][fromSlot] : [];
+    const activity = fromList[actIdx];
+    if (!activity) return;
     onDaysChange(days.map((d, di) => {
       if (di !== dayIdx) return d;
+      const toList = Array.isArray(d[toSlot]) ? d[toSlot] : [];
       return {
         ...d,
-        [fromSlot]: d[fromSlot].filter((_, ai) => ai !== actIdx),
-        [toSlot]: [...d[toSlot], { ...activity }],
+        [fromSlot]: (Array.isArray(d[fromSlot]) ? d[fromSlot] : []).filter((_, ai) => ai !== actIdx),
+        [toSlot]: [...toList, { ...activity }],
       };
     }));
   }, [days, onDaysChange]);
@@ -1280,26 +1339,29 @@ function DayCardList({
   const addActivityToDay = useCallback((dayIdx: number, slot: keyof Pick<DayPlan, 'morning' | 'afternoon' | 'evening'>, activity: ActivityItem) => {
     onDaysChange(days.map((d, di) => {
       if (di !== dayIdx) return d;
-      return { ...d, [slot]: [...d[slot], activity] };
+      const currentList = Array.isArray(d[slot]) ? d[slot] : [];
+      return { ...d, [slot]: [...currentList, activity] };
     }));
   }, [days, onDaysChange]);
 
   return (
     <>
-      <div className="space-y-4">
+      <div className="space-y-5">
         {days.map((day, index) => (
           <DayCard
             key={`${day.date}-${index}`}
             day={day}
             index={index}
-            isExpanded={expandedDay === index}
-            onToggle={() => setExpandedDay(expandedDay === index ? null : index)}
+            isExpanded={expandedDays.has(index)}
+            onToggle={() => toggleDay(index)}
             destination={destination}
             travelStyle={travelStyle}
+            isPlannerAgent={isPlannerAgent}
             onRemoveActivity={(slot, actIdx) => removeActivity(index, slot, actIdx)}
             onSwapActivity={(slot, actIdx, alt) => swapActivity(index, slot, actIdx, alt)}
             onRescheduleActivity={(fromSlot, actIdx, toSlot) => rescheduleActivity(index, fromSlot, actIdx, toSlot)}
             onAddActivity={(slot, activity) => addActivityToDay(index, slot, activity)}
+            onUpdateDay={(updated) => onDaysChange(days.map((d, di) => di === index ? updated : d))}
           />
         ))}
       </div>
@@ -1315,10 +1377,12 @@ function DayCard({
   onToggle,
   destination,
   travelStyle,
+  isPlannerAgent = false,
   onRemoveActivity,
   onSwapActivity,
   onRescheduleActivity,
   onAddActivity,
+  onUpdateDay,
 }: {
   day: DayPlan;
   index: number;
@@ -1326,10 +1390,12 @@ function DayCard({
   onToggle: () => void;
   destination: string;
   travelStyle: string;
+  isPlannerAgent?: boolean;
   onRemoveActivity: (slot: keyof Pick<DayPlan, 'morning' | 'afternoon' | 'evening'>, actIdx: number) => void;
   onSwapActivity: (slot: keyof Pick<DayPlan, 'morning' | 'afternoon' | 'evening'>, actIdx: number, alt: SwapAlternative) => void;
   onRescheduleActivity: (fromSlot: keyof Pick<DayPlan, 'morning' | 'afternoon' | 'evening'>, actIdx: number, toSlot: 'morning' | 'afternoon' | 'evening') => void;
   onAddActivity: (slot: keyof Pick<DayPlan, 'morning' | 'afternoon' | 'evening'>, activity: ActivityItem) => void;
+  onUpdateDay?: (updated: DayPlan) => void;
 }) {
   const slots = (['morning', 'afternoon', 'evening'] as const).filter(
     (slot) => Array.isArray(day[slot]) && day[slot].length > 0
@@ -1343,52 +1409,62 @@ function DayCard({
 
   // Build a short description from notes or first activity places
   const shortDesc = sanitizeText(day.notes)
-    ? sanitizeText(day.notes).slice(0, 120) + (sanitizeText(day.notes).length > 120 ? '…' : '')
+    ? sanitizeText(day.notes).slice(0, 140) + (sanitizeText(day.notes).length > 140 ? '…' : '')
     : slots
-        .map((s) => {
-          const acts = day[s] as DayPlan['morning'];
-          return acts?.[0]?.place;
-        })
-        .filter(Boolean)
-        .join(' → ');
+      .map((s) => {
+        const acts = day[s] as DayPlan['morning'];
+        return acts?.[0]?.place;
+      })
+      .filter(Boolean)
+      .join(' → ');
 
   return (
-    <div className="rounded-[1.2rem] border border-[#cfe1d4] bg-white shadow-[0_8px_18px_rgba(45,90,71,0.06)] overflow-hidden transition-all duration-300">
-      {/* Collapsed Header — always visible */}
-      <button
+    <div className="rounded-[1.4rem] border-2 border-[#cfe1d4] bg-white shadow-[0_10px_24px_rgba(45,90,71,0.06)] overflow-hidden transition-all duration-300">
+      {/* Day Card Header — Title of that day prominently on top */}
+      <div
         onClick={onToggle}
-        className="w-full text-left px-5 py-4 sm:px-6 sm:py-5 flex items-center gap-4 group hover:bg-[#f9fcfa] transition-colors"
+        className="w-full text-left px-5 py-4 sm:px-6 sm:py-5 flex items-center justify-between gap-4 cursor-pointer hover:bg-[#f9fcfa] transition-colors border-b border-[#e7efe9] bg-gradient-to-r from-[#fbfdfb] via-[#f7fbf8] to-[#edf6ef]"
       >
-        {/* Day number badge */}
-        <div className="flex-shrink-0 w-14 h-14 rounded-xl bg-[#2d5a47] flex flex-col items-center justify-center shadow-md">
-          <span className="text-[9px] font-bold uppercase tracking-widest text-white/70">Day</span>
-          <span className="text-xl font-bold text-white leading-none">{index + 1}</span>
-        </div>
-
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-0.5">
-            <h3 className="font-serif text-xl sm:text-2xl text-[#244b3d] truncate">{day.theme}</h3>
+        <div className="flex items-center gap-3.5 sm:gap-4 min-w-0">
+          {/* Day number badge */}
+          <div className="flex-shrink-0 w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-gradient-to-br from-[#2d5a47] to-[#1c3d2f] flex flex-col items-center justify-center shadow-md border border-[#2d5a47]/20">
+            <span className="text-[9px] font-bold uppercase tracking-widest text-white/70">Day</span>
+            <span className="text-lg sm:text-xl font-bold text-white leading-none">{index + 1}</span>
           </div>
-          <p className="text-xs text-slate-500 truncate">{day.date}{shortDesc ? ` · ${shortDesc}` : ''}</p>
+
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-[#2d5a47] bg-[#edf6ef] border border-[#cfe1d4] px-2.5 py-0.5 rounded-full">
+                {day.date}
+              </span>
+              <span className="text-[11px] font-medium text-slate-400 hidden sm:inline">
+                • {slots.length} time slots
+              </span>
+            </div>
+            <h3 className="font-serif text-xl sm:text-2xl font-bold text-[#244b3d] leading-snug">
+              {day.theme ? sanitizeText(day.theme) : `Day ${index + 1} Itinerary`}
+            </h3>
+            {shortDesc && !isExpanded && (
+              <p className="text-xs text-slate-500 truncate mt-0.5">{shortDesc}</p>
+            )}
+          </div>
         </div>
 
-        <div className="flex-shrink-0 flex items-center gap-2">
-          <span className="hidden sm:inline text-[10px] font-bold uppercase tracking-wider text-[#2d5a47]/60">
-            {isExpanded ? 'Close' : 'See Details'}
-          </span>
-          <span
-            className={`text-[#2d5a47] transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`}
-          >
-            ▾
-          </span>
-        </div>
-      </button>
+        <button
+          type="button"
+          aria-label={isExpanded ? "Collapse Day" : "Expand Day"}
+          className="flex-shrink-0 flex items-center gap-1.5 text-[11px] font-bold text-[#2d5a47] bg-white hover:bg-[#edf6ef] border border-[#cfe1d4] px-3.5 py-1.5 rounded-full shadow-2xs cursor-pointer transition-all"
+        >
+          <span>{isExpanded ? 'Collapse' : 'Expand'}</span>
+          <span className={`transition-transform duration-300 text-xs ${isExpanded ? 'rotate-180' : ''}`}>▾</span>
+        </button>
+      </div>
 
       {/* Expanded content */}
       {isExpanded && (
-        <div className="px-5 pb-5 sm:px-6 sm:pb-6 border-t border-[#e7efe9]">
+        <div className="px-5 pb-5 sm:px-6 sm:pb-6 pt-2">
           {/* Thin Interactive Slot Card Strip */}
-          <div className="slot-card-strip mt-4">
+          <div className="slot-card-strip mt-3">
             {(['morning', 'afternoon', 'evening'] as const).map((slot) => (
               <div
                 key={slot}
@@ -1398,7 +1474,7 @@ function DayCard({
                 <span className="slot-card-label">
                   {slot === 'morning' ? '🌅' : slot === 'afternoon' ? '☀️' : '🌙'}{' '}
                   {slot}
-                  {day[slot].length > 0 && (
+                  {Array.isArray(day[slot]) && day[slot].length > 0 && (
                     <span className="ml-1.5 inline-flex items-center justify-center w-4 h-4 rounded-full bg-[#2d5a47]/10 text-[9px] font-bold text-[#2d5a47]">
                       {day[slot].length}
                     </span>
@@ -1417,7 +1493,10 @@ function DayCard({
                   {activeSlot} Plan
                 </h4>
                 {(() => {
-                  const activities = day[slotKey] as ActivityItem[];
+                  const rawActivities = (day[slotKey] as ActivityItem[]) || [];
+                  const activities = rawActivities.filter(
+                    (a) => a && typeof a.place === 'string' && a.place.trim() && a.place.trim() !== '-' && a.place.trim() !== '—'
+                  );
                   if (!activities || activities.length === 0) {
                     return (
                       <div className="rounded-xl border border-dashed border-[#cfe1d4] bg-[#f9fcfa]/50 p-5 text-center text-sm text-slate-400">
@@ -1477,6 +1556,104 @@ function DayCard({
               {sanitizeText(day.notes)}
             </div>
           )}
+
+          {/* Stay for the Night — Hotel Options (Planner Agent only) */}
+          {isPlannerAgent && day.hotel_options && day.hotel_options.length > 0 && (
+            <div className="mt-5 rounded-2xl border border-[#cfe1d4] bg-[#f7faf8] p-4 sm:p-5 shadow-xs">
+              <div className="flex items-center justify-between gap-2 mb-3">
+                <div className="flex items-center gap-2">
+                  <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#2d5a47]/10 text-[#2d5a47]">
+                    <Hotel size={16} />
+                  </div>
+                  <div>
+                    <h4 className="text-xs sm:text-sm font-bold uppercase tracking-wider text-[#244b3d]">
+                      Stay for the Night — Hotel Options
+                    </h4>
+                    <p className="text-[11px] text-slate-500">Choose your preferred accommodation for Day {index + 1}</p>
+                  </div>
+                </div>
+                {day.selected_hotel && (
+                  <span className="hidden sm:inline-flex items-center gap-1 rounded-full bg-[#e3efe6] px-2.5 py-1 text-[10px] font-bold text-[#204437]">
+                    ✓ Chosen: {day.selected_hotel.name}
+                  </span>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {day.hotel_options.map((hotel, hIdx) => {
+                  const isSelected = day.selected_hotel?.name === hotel.name || (!day.selected_hotel && hIdx === 0);
+                  return (
+                    <div
+                      key={hotel.name}
+                      className={`flex flex-col justify-between rounded-xl border p-3 transition-all ${isSelected
+                        ? 'border-[#2d5a47] bg-white ring-2 ring-[#2d5a47]/20 shadow-sm'
+                        : 'border-[#dfeae2] bg-white hover:border-[#b4d2be]'
+                        }`}
+                    >
+                      <div>
+                        {hotel.image_url && (
+                          <img
+                            src={hotel.image_url}
+                            alt={hotel.name}
+                            className="w-full h-24 rounded-lg object-cover mb-2 border border-[#dfeae2]"
+                            loading="lazy"
+                          />
+                        )}
+                        <div className="flex items-start justify-between gap-1">
+                          <span className="text-[9px] font-bold uppercase tracking-wider text-[#2d5a47] bg-[#edf6ef] px-2 py-0.5 rounded">
+                            {hotel.category || 'Hotel'}
+                          </span>
+                          {hotel.rating && (
+                            <span className="text-[10px] font-bold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded">
+                              ★ {hotel.rating}
+                            </span>
+                          )}
+                        </div>
+                        <h5 className="mt-1.5 text-xs sm:text-sm font-bold text-slate-800 line-clamp-1">{hotel.name}</h5>
+                        {hotel.description && (
+                          <p className="mt-1 text-[11px] text-slate-600 line-clamp-2 leading-relaxed">{hotel.description}</p>
+                        )}
+                      </div>
+
+                      <div className="mt-3 pt-2 border-t border-slate-100 flex items-center justify-between">
+                        <div>
+                          <span className="text-xs sm:text-sm font-bold text-[#2d5a47]">
+                            ₹{(hotel.price_per_night || 3500).toLocaleString('en-IN')}
+                          </span>
+                          <span className="text-[10px] text-slate-500"> / night</span>
+                        </div>
+
+                        <div className="flex items-center gap-1.5">
+                          {hotel.booking_link && (
+                            <a
+                              href={hotel.booking_link}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-slate-500 hover:text-slate-800 px-2 py-1 rounded bg-slate-100 hover:bg-slate-200"
+                            >
+                              <span>View</span>
+                              <ExternalLink size={9} />
+                            </a>
+                          )}
+                          <button
+                            onClick={() => {
+                              onUpdateDay?.({ ...day, selected_hotel: hotel });
+                            }}
+                            className={`text-[10px] font-bold px-2.5 py-1 rounded-lg transition-all cursor-pointer ${isSelected
+                              ? 'bg-[#2d5a47] text-white shadow-2xs'
+                              : 'bg-[#edf6ef] text-[#2d5a47] hover:bg-[#dff0e5]'
+                              }`}
+                          >
+                            {isSelected ? '✓ Chosen' : 'Select'}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -1522,14 +1699,124 @@ function ItineraryPage({ itinerary }: { itinerary: TripPlanResponse | null }) {
   }
 
   const { overview, fun_facts, must_try_food, hidden_gems, local_culture, travel_hacks, budget_info, places_covered } = resolvedItinerary;
+  const isPlannerAgent = resolvedItinerary.source === 'planner_agent' || resolvedItinerary.planner_type === 'planner_agent';
+
+  const [modifyQuery, setModifyQuery] = useState('');
+  const [isModifying, setIsModifying] = useState(false);
+  const [modifyToast, setModifyToast] = useState<{ type: 'info' | 'error'; text: string } | null>(null);
+  const [optimizationConfirmation, setOptimizationConfirmation] = useState<OptimizationConfirmation | null>(null);
+  const [isApplyingOptimization, setIsApplyingOptimization] = useState(false);
+
+  const handleDismissOptimization = () => setOptimizationConfirmation(null);
+
+  const handleApplyOptimization = async (category: 'transport' | 'hotel', selectedAlt: TransportAlternative | any) => {
+    if (!resolvedItinerary || isApplyingOptimization) return;
+    setIsApplyingOptimization(true);
+    try {
+      const result = await applyOptimization({
+        itinerary: { ...resolvedItinerary, days: mutableDays },
+        category,
+        selected_alternative: selectedAlt,
+        num_people: resolvedItinerary.request.number_of_people,
+        days: resolvedItinerary.request.days,
+      });
+      if (result.success && result.itinerary) {
+        const updated = result.itinerary;
+        setResolvedItinerary(updated);
+        if (updated.days) setMutableDays(updated.days);
+        window.localStorage.setItem('beyond-itinerary', JSON.stringify(updated));
+        setModifyToast({ type: 'info', text: result.message || 'Optimization applied!' });
+      }
+      setOptimizationConfirmation(null);
+    } catch {
+      setModifyToast({ type: 'error', text: 'Failed to apply optimization. Please try again.' });
+    } finally {
+      setIsApplyingOptimization(false);
+    }
+  };
+
+  const handleModifyItinerary = async () => {
+    const text = modifyQuery.trim();
+    if (!text || isModifying || !resolvedItinerary) return;
+
+    setIsModifying(true);
+    setModifyToast(null);
+
+    try {
+      const currentPayload = {
+        ...resolvedItinerary,
+        days: mutableDays,
+      };
+
+      const result = await chatPlan({
+        query: text,
+        itinerary: currentPayload,
+        destination: resolvedItinerary.request.destination,
+        days: resolvedItinerary.request.days,
+        travel_style: resolvedItinerary.request.travel_style,
+        number_of_people: resolvedItinerary.request.number_of_people,
+        party_type: resolvedItinerary.request.party_type,
+      });
+
+      // ── Budget optimization: show confirmation card, don't auto-mutate ────
+      if (result.intent === 'budget_optimization' && result.optimization_confirmation?.requires_confirmation) {
+        setOptimizationConfirmation(result.optimization_confirmation);
+        setModifyToast({
+          type: result.api_errors && result.api_errors.length > 0 ? 'error' : 'info',
+          text: result.user_message || 'We found cheaper options. Review and confirm below.',
+        });
+        setModifyQuery('');
+        return;
+      }
+
+      // ── Unsupported / out-of-scope query: show warning toast, preserve existing itinerary ────
+      if (result.intent === 'unsupported_query') {
+        setModifyToast({
+          type: 'error',
+          text: result.user_message || 'I cannot answer that query. Please ask a travel planning request.',
+        });
+        setModifyQuery('');
+        return;
+      }
+
+      // ── Show error toast if any live API failed ───────────────────────────
+      if (result.api_errors && result.api_errors.length > 0) {
+        setModifyToast({
+          type: 'error',
+          text: result.api_errors.join(' | '),
+        });
+      }
+
+      if (result.itinerary && result.itinerary.days && result.itinerary.days.length > 0) {
+        setResolvedItinerary(result.itinerary);
+        setMutableDays(result.itinerary.days);
+        window.localStorage.setItem('beyond-itinerary', JSON.stringify(result.itinerary));
+      }
+
+      if (!result.api_errors || result.api_errors.length === 0) {
+        setModifyToast({
+          type: 'info',
+          text: result.user_message || 'Itinerary updated according to your request.',
+        });
+      }
+      setModifyQuery('');
+    } catch {
+      setModifyToast({
+        type: 'error',
+        text: 'Failed to update itinerary. Please try again with different phrasing.',
+      });
+    } finally {
+      setIsModifying(false);
+    }
+  };
 
   return (
-    <main className="relative overflow-hidden bg-[#dfeee5] px-4 py-8 pb-20 sm:px-6 lg:px-8">
+    <main className={`relative overflow-hidden bg-[#dfeee5] px-4 py-8 ${isPlannerAgent ? 'pb-24' : 'pb-12'} sm:px-6 lg:px-8`}>
       <div className="relative mx-auto max-w-5xl rounded-[2rem] border border-[#aac7b4] bg-[#f2f8f3]/90 p-4 shadow-[0_18px_40px_rgba(45,90,71,0.08)] sm:p-6 lg:p-8">
         <header className="pb-6 text-center border-b border-[#cfe1d4] mb-6">
           <p className="text-[10px] font-bold uppercase tracking-[0.55em] text-[#2d5a47]/75">BEYOND TRAVEL GUIDE</p>
           <h1 className="mt-2 font-serif text-4xl italic text-[#274b3d] sm:text-5xl">{resolvedItinerary.request.destination}</h1>
-          
+
           <div className="mt-3 flex flex-wrap items-center justify-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-[#2d5a47]">
             <span className="rounded-full bg-[#dbe8de] px-3 py-1">{resolvedItinerary.request.days} Days</span>
             <span>•</span>
@@ -1550,103 +1837,329 @@ function ItineraryPage({ itinerary }: { itinerary: TripPlanResponse | null }) {
           )}
         </header>
 
-        {/* Story Overview */}
-        {overview && (
-          <div className="mb-6 rounded-[1.2rem] border border-[#b8d4c1] bg-gradient-to-br from-[#eaf4ed] to-[#f4f9f5] p-5 shadow-sm">
-            <div className="mb-2 text-[#2d5a47] font-semibold text-sm">
-              Destination Story & Vibe
-            </div>
-            <p className="text-base sm:text-lg leading-relaxed text-[#234537] italic font-serif">{sanitizeText(overview)}</p>
-          </div>
-        )}
+        {/* Recommended Transit & Travel Option at Start (Planner Agent only) */}
+        {isPlannerAgent && resolvedItinerary.best_flight && (() => {
+          const trans = resolvedItinerary.best_flight;
+          const modeLabel = trans.mode || 'Travel';
+          const modeLower = modeLabel.toLowerCase();
+          const renderTransitIcon = (size = 18) => {
+            if (modeLower.includes('train') || modeLower.includes('rail')) return <Train size={size} />;
+            if (modeLower.includes('bus')) return <Bus size={size} />;
+            if (modeLower.includes('car') || modeLower.includes('drive') || modeLower.includes('cab') || modeLower.includes('road')) return <Car size={size} />;
+            if (modeLower.includes('flight') || modeLower.includes('air') || modeLower.includes('plane')) return <Plane size={size} />;
+            return <Navigation size={size} />;
+          };
+          const priceVal = trans.price_per_person || trans.price;
+          const totalVal = trans.total_price || (priceVal ? priceVal * resolvedItinerary.request.number_of_people : null);
 
-        {/* Fun Facts & Trivia Card Grid */}
-        {fun_facts && fun_facts.length > 0 && (
-          <div className="mb-6 rounded-[1.2rem] border border-[#d2e4d7] bg-white p-5 shadow-sm">
-            <h3 className="mb-3 text-base sm:text-lg font-bold text-[#244b3d]">
-              Did You Know? Fun Facts & Trivia
-            </h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {fun_facts.map((fact, idx) => (
-                <div key={idx} className="rounded-xl border border-[#e4eee7] bg-[#f9fcfa] p-3 text-sm sm:text-[15px] leading-relaxed text-slate-700 flex items-start gap-2">
-                  <span className="text-[#2d5a47] font-bold">#{idx + 1}</span>
-                  <span>{sanitizeText(fact)}</span>
+          return (
+            <div className="mb-6 rounded-[1.5rem] border border-[#a2c9b2] bg-gradient-to-br from-[#ffffff] via-[#f7fbf8] to-[#edf6f0] p-5 sm:p-6 shadow-sm">
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-4 border-b border-[#dfeae2] pb-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-[#2d5a47] text-white shadow-2xs">
+                    {renderTransitIcon(18)}
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-[#2d5a47]">
+                        RECOMMENDED {modeLabel.toUpperCase()} OPTION
+                      </span>
+                      <span className="rounded bg-[#e4f1e7] px-2 py-0.5 text-[10px] font-bold text-[#204437]">
+                        {modeLabel}
+                      </span>
+                    </div>
+                    <h3 className="text-base sm:text-lg font-bold text-slate-800">
+                      {trans.airline || trans.provider || `${modeLabel} Transit`}
+                      {trans.identifier ? ` • ${trans.identifier}` : ''}
+                    </h3>
+                  </div>
                 </div>
-              ))}
-            </div>
-          </div>
-        )}
 
-        {/* Must Try Food & Culinary Highlights */}
-        {must_try_food && must_try_food.length > 0 && (
-          <div className="mb-6 rounded-[1.2rem] border border-[#e2d5c3] bg-gradient-to-r from-[#fcf8f2] to-[#f9f5ed] p-5 shadow-sm">
-            <h3 className="mb-3 text-base sm:text-lg font-bold text-[#5c3e1e]">
-              Must-Try Local Cuisine & Dishes
-            </h3>
-            <div className="space-y-2">
-              {must_try_food.map((dish, idx) => (
-                <div key={idx} className="flex items-start gap-2 rounded-lg border border-[#ede2d3] bg-white/80 p-2.5 text-sm sm:text-[15px] text-[#4a341b]">
-                  <span className="text-amber-600 font-bold">•</span>
-                  <span>{sanitizeText(dish)}</span>
+                {priceVal ? (
+                  <div className="text-right">
+                    <div className="text-lg sm:text-2xl font-bold font-serif text-[#2d5a47]">
+                      ₹{priceVal.toLocaleString('en-IN')}
+                    </div>
+                    <div className="text-[10px] font-medium text-slate-500">per person (one way)</div>
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+                {/* Departure & Arrival Time Strip */}
+                <div className="md:col-span-2 flex items-center justify-between rounded-xl bg-white p-3.5 border border-[#e4eee7] shadow-2xs">
+                  <div>
+                    <div className="text-xs text-slate-500 font-medium">
+                      {trans.departure_time ? 'Departure' : 'Origin'}
+                    </div>
+                    {trans.departure_time && (
+                      <div className="text-base sm:text-lg font-bold text-slate-800">
+                        {trans.departure_time}
+                      </div>
+                    )}
+                    <div className="text-[11px] font-semibold text-[#2d5a47]">
+                      {trans.origin || 'Departure Point'}
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col items-center px-3">
+                    <div className="text-[10px] font-bold text-slate-500">
+                      {trans.duration || 'Direct Journey'}
+                    </div>
+                    <div className="w-24 sm:w-32 h-0.5 bg-[#aac7b4] my-1 relative flex items-center justify-center">
+                      <div className="p-0.5 rounded-full bg-white border border-[#aac7b4] text-[#2d5a47]">
+                        {renderTransitIcon(11)}
+                      </div>
+                    </div>
+                    <div className="text-[9px] font-bold uppercase tracking-wider text-emerald-700">
+                      {trans.stops || 'Direct Route'}
+                    </div>
+                  </div>
+
+                  <div className="text-right">
+                    <div className="text-xs text-slate-500 font-medium">
+                      {trans.arrival_time ? 'Arrival' : 'Destination'}
+                    </div>
+                    {trans.arrival_time && (
+                      <div className="text-base sm:text-lg font-bold text-slate-800">
+                        {trans.arrival_time}
+                      </div>
+                    )}
+                    <div className="text-[11px] font-semibold text-[#2d5a47]">
+                      {trans.destination || resolvedItinerary.request.destination}
+                    </div>
+                  </div>
                 </div>
-              ))}
-            </div>
-          </div>
-        )}
 
-        {/* Hidden Gems & Culture & Travel Hacks Grid */}
-        <div className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-4">
-          {hidden_gems && hidden_gems.length > 0 && (
-            <div className="rounded-[1.2rem] border border-[#cde0d3] bg-white p-4 shadow-sm">
-              <h4 className="mb-2.5 text-sm sm:text-base font-bold text-[#244b3d]">
-                Hidden Gems & Offbeat Spots
-              </h4>
-              <ul className="space-y-2 text-sm sm:text-[15px] text-slate-700">
-                {hidden_gems.map((gem, idx) => (
-                  <li key={idx} className="flex items-start gap-2">
-                    <span className="text-[#2d5a47]">•</span>
-                    <span>{sanitizeText(gem)}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {(local_culture || travel_hacks) && (
-            <div className="rounded-[1.2rem] border border-[#cde0d3] bg-white p-4 shadow-sm">
-              {local_culture && (
-                <div className="mb-3">
-                  <h4 className="mb-1.5 text-sm sm:text-base font-bold text-[#244b3d]">
-                    Local Culture & Etiquette
-                  </h4>
-                  <p className="text-sm sm:text-[15px] leading-relaxed text-slate-700">{sanitizeText(local_culture)}</p>
+                {/* Action Button */}
+                <div className="flex flex-col gap-1.5">
+                  {modeLower.includes('drive') || modeLower.includes('car') || modeLower.includes('road') || modeLower.includes('self') ? (
+                    <>
+                      <div className="flex items-center justify-center gap-1.5 w-full py-2.5 px-3 rounded-xl bg-[#edf6ef] border border-[#b8d4c1] text-[#244b3d] font-bold text-xs uppercase tracking-wider text-center">
+                        <Car size={14} />
+                        <span>Self-Drive / Personal Vehicle</span>
+                      </div>
+                      <a
+                        href={`https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(trans.origin || 'Mumbai')}&destination=${encodeURIComponent(trans.destination || resolvedItinerary.request.destination)}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex items-center justify-center gap-1 w-full py-1 text-[11px] font-semibold text-[#2d5a47] hover:underline cursor-pointer"
+                      >
+                        <span>View Route on Google Maps</span>
+                        <ExternalLink size={10} />
+                      </a>
+                    </>
+                  ) : (
+                    <a
+                      href={trans.booking_link || 'https://www.makemytrip.com'}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex items-center justify-center gap-1.5 w-full py-3 px-4 rounded-xl bg-[#2d5a47] text-white font-bold text-xs uppercase tracking-wider hover:bg-[#234737] shadow-sm transition-all cursor-pointer"
+                    >
+                      <span>Book {modeLabel}</span>
+                      <ExternalLink size={13} />
+                    </a>
+                  )}
+                  {totalVal ? (
+                    <div className="text-center text-[10px] text-slate-500">
+                      Total for {resolvedItinerary.request.number_of_people} travellers: ₹{totalVal.toLocaleString('en-IN')}
+                    </div>
+                  ) : (
+                    <div className="text-center text-[10px] text-slate-500">
+                      Estimated travel for {resolvedItinerary.request.number_of_people} travellers
+                    </div>
+                  )}
                 </div>
-              )}
+              </div>
+            </div>
+          );
+        })()}
 
-              {travel_hacks && travel_hacks.length > 0 && (
+        {/* Whole Budget Breakdown Card (Hotel + Transport + Restaurant) (Planner Agent only) */}
+        {isPlannerAgent && resolvedItinerary.budget_breakdown && (
+          <div className="mb-8 rounded-[1.5rem] border border-[#a8ceb8] bg-white p-5 sm:p-6 shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-4 border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-[#edf6ef] text-[#2d5a47]">
+                  <Wallet size={18} />
+                </div>
                 <div>
-                  <h4 className="mb-1.5 text-sm sm:text-base font-bold text-[#244b3d]">
-                    Insider Travel Hacks
+                  <h3 className="text-base sm:text-lg font-bold text-slate-800">
+                    Total Estimated Trip Budget Breakdown
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    All-inclusive estimate for {resolvedItinerary.request.days} days & {resolvedItinerary.request.number_of_people} travellers
+                  </p>
+                </div>
+              </div>
+
+              <div className="text-right">
+                <div className="text-xl sm:text-2xl font-bold font-serif text-[#244b3d]">
+                  ₹{(resolvedItinerary.budget_breakdown.grand_total || 0).toLocaleString('en-IN')}
+                </div>
+                <div className="text-[11px] font-semibold text-[#2d5a47]">
+                  ≈ ₹{(resolvedItinerary.budget_breakdown.per_person_total || 0).toLocaleString('en-IN')} / person
+                </div>
+              </div>
+            </div>
+
+            {/* 3 Main Categories: Hotel + Transport + Restaurant */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 mb-4">
+              {/* Hotel */}
+              <div className="rounded-xl border border-blue-100 bg-blue-50/50 p-3.5">
+                <div className="flex items-center gap-1.5 text-blue-800 text-xs font-bold uppercase tracking-wider mb-1">
+                  <Hotel size={14} />
+                  <span>Hotel & Stay</span>
+                </div>
+                <div className="text-lg font-bold text-slate-800">
+                  ₹{(resolvedItinerary.budget_breakdown.hotel_total || 0).toLocaleString('en-IN')}
+                </div>
+                <div className="text-[11px] text-slate-500 mt-0.5">
+                  ₹{(resolvedItinerary.budget_breakdown.hotel_per_night || 0).toLocaleString('en-IN')} / night
+                </div>
+              </div>
+
+              {/* Transport */}
+              <div className="rounded-xl border border-emerald-100 bg-emerald-50/50 p-3.5">
+                <div className="flex items-center gap-1.5 text-emerald-800 text-xs font-bold uppercase tracking-wider mb-1">
+                  <Navigation size={14} />
+                  <span>Transport & Travel</span>
+                </div>
+                <div className="text-lg font-bold text-slate-800">
+                  ₹{(resolvedItinerary.budget_breakdown.transport_total || 0).toLocaleString('en-IN')}
+                </div>
+                <div className="text-[11px] text-slate-500 mt-0.5">
+                  Roundtrip for {resolvedItinerary.request.number_of_people} people
+                </div>
+              </div>
+
+              {/* Restaurant */}
+              <div className="rounded-xl border border-amber-100 bg-amber-50/50 p-3.5">
+                <div className="flex items-center gap-1.5 text-amber-800 text-xs font-bold uppercase tracking-wider mb-1">
+                  <Utensils size={14} />
+                  <span>Food & Restaurants</span>
+                </div>
+                <div className="text-lg font-bold text-slate-800">
+                  ₹{(resolvedItinerary.budget_breakdown.food_restaurant_total || 0).toLocaleString('en-IN')}
+                </div>
+                <div className="text-[11px] text-slate-500 mt-0.5">
+                  ₹{(resolvedItinerary.budget_breakdown.food_per_day || 0).toLocaleString('en-IN')} / day for meals
+                </div>
+              </div>
+            </div>
+
+            {/* Extra Activities info */}
+            {resolvedItinerary.budget_breakdown.activities_total ? (
+              <div className="flex flex-wrap items-center justify-between text-xs text-slate-600 px-1 pt-2 border-t border-slate-100">
+                <span>Sightseeing & Activities entry: <strong className="text-slate-800">₹{(resolvedItinerary.budget_breakdown.activities_total).toLocaleString('en-IN')}</strong></span>
+                <span className="text-[11px] text-slate-500 font-medium">Estimated for {resolvedItinerary.budget_breakdown.tier || 'Mid-range'} travel tier</span>
+              </div>
+            ) : null}
+          </div>
+        )}
+
+        {/* General Planner Story & Cultural Modules (Preserved from prior build trip design) */}
+        {!isPlannerAgent && (
+          <>
+            {/* Story Overview */}
+            {overview && (
+              <div className="mb-6 rounded-[1.2rem] border border-[#b8d4c1] bg-gradient-to-br from-[#eaf4ed] to-[#f4f9f5] p-5 shadow-sm">
+                <div className="mb-2 text-[#2d5a47] font-semibold text-sm">
+                  Destination Story & Vibe
+                </div>
+                <p className="text-base sm:text-lg leading-relaxed text-[#234537] italic font-serif">{sanitizeText(overview)}</p>
+              </div>
+            )}
+
+            {/* Fun Facts & Trivia Card Grid */}
+            {fun_facts && fun_facts.length > 0 && (
+              <div className="mb-6 rounded-[1.2rem] border border-[#d2e4d7] bg-white p-5 shadow-sm">
+                <h3 className="mb-3 text-base sm:text-lg font-bold text-[#244b3d]">
+                  Did You Know? Fun Facts & Trivia
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {fun_facts.map((fact, idx) => (
+                    <div key={idx} className="rounded-xl border border-[#e4eee7] bg-[#f9fcfa] p-3 text-sm sm:text-[15px] leading-relaxed text-slate-700 flex items-start gap-2">
+                      <span className="text-[#2d5a47] font-bold">#{idx + 1}</span>
+                      <span>{sanitizeText(fact)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Must Try Food & Culinary Highlights */}
+            {must_try_food && must_try_food.length > 0 && (
+              <div className="mb-6 rounded-[1.2rem] border border-[#e2d5c3] bg-gradient-to-r from-[#fcf8f2] to-[#f9f5ed] p-5 shadow-sm">
+                <h3 className="mb-3 text-base sm:text-lg font-bold text-[#5c3e1e]">
+                  Must-Try Local Cuisine & Dishes
+                </h3>
+                <div className="space-y-2">
+                  {must_try_food.map((dish, idx) => (
+                    <div key={idx} className="flex items-start gap-2 rounded-lg border border-[#ede2d3] bg-white/80 p-2.5 text-sm sm:text-[15px] text-[#4a341b]">
+                      <span className="text-amber-600 font-bold">•</span>
+                      <span>{sanitizeText(dish)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Hidden Gems & Culture & Travel Hacks Grid */}
+            <div className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+              {hidden_gems && hidden_gems.length > 0 && (
+                <div className="rounded-[1.2rem] border border-[#cde0d3] bg-white p-4 shadow-sm">
+                  <h4 className="mb-2.5 text-sm sm:text-base font-bold text-[#244b3d]">
+                    Hidden Gems & Offbeat Spots
                   </h4>
-                  <ul className="space-y-1.5 text-sm sm:text-[15px] text-slate-700">
-                    {travel_hacks.map((hack, idx) => (
+                  <ul className="space-y-2 text-sm sm:text-[15px] text-slate-700">
+                    {hidden_gems.map((gem, idx) => (
                       <li key={idx} className="flex items-start gap-2">
-                        <span className="text-amber-600">✓</span>
-                        <span>{sanitizeText(hack)}</span>
+                        <span className="text-[#2d5a47]">•</span>
+                        <span>{sanitizeText(gem)}</span>
                       </li>
                     ))}
                   </ul>
                 </div>
               )}
-            </div>
-          )}
-        </div>
 
-        {budget_info && (
-          <div className="mb-6 rounded-xl border border-[#cfe1d4] bg-[#eaf4ed] p-3.5 text-sm sm:text-[15px] text-[#244b3d] flex items-center gap-2">
-            <span className="font-bold">Budget Advice:</span>
-            <span>{sanitizeText(budget_info)}</span>
-          </div>
+              {(local_culture || travel_hacks) && (
+                <div className="rounded-[1.2rem] border border-[#cde0d3] bg-white p-4 shadow-sm">
+                  {local_culture && (
+                    <div className="mb-3">
+                      <h4 className="mb-1.5 text-sm sm:text-base font-bold text-[#244b3d]">
+                        Local Culture & Etiquette
+                      </h4>
+                      <p className="text-sm sm:text-[15px] leading-relaxed text-slate-700">{sanitizeText(local_culture)}</p>
+                    </div>
+                  )}
+
+                  {travel_hacks && travel_hacks.length > 0 && (
+                    <div>
+                      <h4 className="mb-1.5 text-sm sm:text-base font-bold text-[#244b3d]">
+                        Insider Travel Hacks
+                      </h4>
+                      <ul className="space-y-1.5 text-sm sm:text-[15px] text-slate-700">
+                        {travel_hacks.map((hack, idx) => (
+                          <li key={idx} className="flex items-start gap-2">
+                            <span className="text-amber-600">✓</span>
+                            <span>{sanitizeText(hack)}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {budget_info && (
+              <div className="mb-6 rounded-xl border border-[#cfe1d4] bg-[#eaf4ed] p-3.5 text-sm sm:text-[15px] text-[#244b3d] flex items-center gap-2">
+                <span className="font-bold">Budget Advice:</span>
+                <span>{sanitizeText(budget_info)}</span>
+              </div>
+            )}
+          </>
         )}
 
         {/* Day-by-Day Experience — Collapsible Cards */}
@@ -1655,9 +2168,176 @@ function ItineraryPage({ itinerary }: { itinerary: TripPlanResponse | null }) {
           days={mutableDays}
           destination={resolvedItinerary.request.destination}
           travelStyle={resolvedItinerary.request.travel_style}
+          isPlannerAgent={isPlannerAgent}
           onDaysChange={setMutableDays}
         />
       </div>
+
+      {/* Sticky Live AI Itinerary Modification Dock at Screen Bottom (Planner Agent only) */}
+      {isPlannerAgent && (
+        <div className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t-2 border-[#2d5a47]/30 px-4 py-3 shadow-[0_-12px_40px_rgba(45,90,71,0.18)]">
+          <div className="mx-auto max-w-5xl">
+            <div className="flex items-center justify-between gap-2 mb-1.5">
+              <div className="flex items-center gap-2">
+                <Sparkles size={14} className="text-[#2d5a47] animate-pulse" />
+                <h4 className="text-xs font-bold uppercase tracking-wider text-[#244b3d]">
+                  Modify Itinerary with AI
+                </h4>
+                <span className="text-[10px] text-slate-500 hidden sm:inline">• Ask to swap places, optimize budget, or change transport</span>
+              </div>
+            </div>
+
+            {/* ── Optimization Confirmation Card ─────────────────────────── */}
+            {optimizationConfirmation?.requires_confirmation && (
+              <div className="mb-3 rounded-2xl border border-[#2d5a47]/30 bg-gradient-to-br from-[#edf6ef] to-[#f4fbf5] p-4 shadow-md">
+                <div className="flex items-start justify-between mb-3">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <Wallet size={15} className="text-[#2d5a47]" />
+                      <span className="text-xs font-bold uppercase tracking-wider text-[#2d5a47]">Budget Optimization Found</span>
+                    </div>
+                    {optimizationConfirmation.total_savings > 0 && (
+                      <p className="mt-1 text-[11px] text-slate-500">
+                        Potential savings up to{' '}
+                        <strong className="text-[#2d5a47]">₹{optimizationConfirmation.total_savings.toLocaleString('en-IN')}</strong>
+                      </p>
+                    )}
+                  </div>
+                  <button onClick={handleDismissOptimization} className="text-slate-400 hover:text-slate-600 transition-colors" title="Dismiss">
+                    <X size={14} />
+                  </button>
+                </div>
+
+                {/* API Warning / Error banner if live search had issues */}
+                {optimizationConfirmation.api_errors && optimizationConfirmation.api_errors.length > 0 && (
+                  <div className="mb-3 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-[11px] text-amber-800 flex items-start gap-1.5">
+                    <span className="font-bold">Notice:</span>
+                    <span>{optimizationConfirmation.api_errors.join('. ')}</span>
+                  </div>
+                )}
+
+                {/* Transport alternatives */}
+                {optimizationConfirmation.transport && (
+                  <div className="mb-3">
+                    <p className="text-[11px] font-semibold text-slate-600 mb-2">
+                      Currently: <span className="text-slate-800">{optimizationConfirmation.transport.original_mode}</span>
+                      {' '}·{' '}
+                      <span className="text-slate-500">₹{optimizationConfirmation.transport.original_cost.toLocaleString('en-IN')}</span>
+                    </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                      {optimizationConfirmation.transport.alternatives.map((alt, idx) => {
+                        const isBest = idx === 0;
+                        return (
+                          <div
+                            key={alt.mode}
+                            className={`relative rounded-xl border p-2.5 flex flex-col gap-1.5 ${isBest
+                              ? 'border-[#2d5a47] bg-[#2d5a47]/5 shadow-sm'
+                              : 'border-slate-200 bg-white'
+                              }`}
+                          >
+                            {isBest && (
+                              <span className="absolute -top-2 left-2 rounded-full bg-[#2d5a47] px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-white">
+                                Best Saving
+                              </span>
+                            )}
+                            <div className="flex items-center gap-1.5">
+                              {alt.mode.toLowerCase().includes('train') ? <Train size={13} className="text-[#2d5a47]" />
+                                : alt.mode.toLowerCase().includes('bus') ? <Bus size={13} className="text-[#2d5a47]" />
+                                  : <Car size={13} className="text-[#2d5a47]" />}
+                              <span className="text-xs font-bold text-slate-800">{alt.mode}</span>
+                              {alt.estimated && (
+                                <span className="ml-auto text-[9px] text-slate-400 italic">est.</span>
+                              )}
+                            </div>
+                            <p className="text-[10px] text-slate-500 truncate">{alt.provider}</p>
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm font-bold text-slate-800">₹{alt.new_cost.toLocaleString('en-IN')}</span>
+                              {alt.savings > 0 && (
+                                <span className="rounded-full bg-green-100 px-1.5 py-0.5 text-[9px] font-bold text-green-700">
+                                  Save ₹{alt.savings.toLocaleString('en-IN')}
+                                </span>
+                              )}
+                            </div>
+                            <button
+                              onClick={() => handleApplyOptimization('transport', alt)}
+                              disabled={isApplyingOptimization}
+                              className="mt-1 w-full rounded-lg bg-[#2d5a47] py-1.5 text-[10px] font-bold uppercase tracking-wider text-white hover:bg-[#214334] transition-colors disabled:opacity-50 cursor-pointer border-0"
+                            >
+                              {isApplyingOptimization ? <Loader2 size={11} className="animate-spin mx-auto" /> : `Switch to ${alt.mode}`}
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Hotel alternative */}
+                {optimizationConfirmation.hotel && (
+                  <div className="border-t border-[#cfe1d4] pt-2 mt-2">
+                    <p className="text-[11px] font-semibold text-slate-600 mb-1.5">
+                      Hotel swap: <span className="line-through text-slate-400">{optimizationConfirmation.hotel.original_name}</span>
+                      {' → '}
+                      <span className="text-slate-800">{optimizationConfirmation.hotel.suggested_name}</span>
+                      {' '}
+                      <span className="text-green-600 font-bold">Save ₹{optimizationConfirmation.hotel.savings.toLocaleString('en-IN')}</span>
+                    </p>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => handleApplyOptimization('hotel', {
+                          ...optimizationConfirmation.hotel!.details,
+                          name: optimizationConfirmation.hotel!.suggested_name,
+                          new_cost: optimizationConfirmation.hotel!.new_cost,
+                          booking_link: optimizationConfirmation.hotel!.booking_link,
+                        })}
+                        disabled={isApplyingOptimization}
+                        className="flex-1 rounded-lg bg-[#2d5a47] py-1.5 text-[10px] font-bold uppercase tracking-wider text-white hover:bg-[#214334] transition-colors disabled:opacity-50 cursor-pointer border-0"
+                      >
+                        Switch Hotel
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                <button
+                  onClick={handleDismissOptimization}
+                  className="mt-2 w-full rounded-lg border border-slate-200 bg-white py-1.5 text-[10px] font-semibold text-slate-500 hover:bg-slate-50 transition-colors cursor-pointer"
+                >
+                  Keep Current Options
+                </button>
+              </div>
+            )}
+
+            {modifyToast && (
+              <div className={`mb-2 rounded-lg px-3 py-1.5 text-xs font-medium ${modifyToast.type === 'info' ? 'bg-[#edf6ef] text-[#244b3d] border border-[#cfe1d4]' : 'bg-red-50 text-red-700 border border-red-200'}`}>
+                {modifyToast.text}
+              </div>
+            )}
+
+            <form onSubmit={(e) => { e.preventDefault(); handleModifyItinerary(); }} className="flex items-center gap-2">
+              <input
+                type="text"
+                value={modifyQuery}
+                onChange={(e) => setModifyQuery(e.target.value)}
+                placeholder="e.g. 'Optimize budget and switch to train' or 'Add more riverside cafes on day 2'…"
+                disabled={isModifying}
+                className="flex-1 rounded-xl border border-[#cfe1d4] bg-[#fbfdfb] px-4 py-2.5 text-sm text-slate-800 outline-none focus:border-[#2d5a47] focus:ring-1 focus:ring-[#2d5a47] disabled:opacity-60"
+              />
+              <button
+                type="submit"
+                disabled={!modifyQuery.trim() || isModifying}
+                className={`flex-shrink-0 h-[42px] px-5 rounded-xl flex items-center justify-center gap-1.5 text-xs font-bold uppercase tracking-wider transition-all cursor-pointer border-0 ${modifyQuery.trim() && !isModifying
+                  ? 'bg-[#2d5a47] text-white hover:bg-[#214334] shadow-md hover:scale-105 active:scale-95'
+                  : 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                  }`}
+              >
+                {isModifying ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
+                <span>{isModifying ? 'Updating…' : 'Update'}</span>
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
@@ -1717,12 +2397,12 @@ function Footer() {
           <div>
             <h4 className="text-xs font-bold uppercase tracking-[0.25em] text-[#a3d9bc] mb-4">Travel Styles</h4>
             <ul className="space-y-2.5 text-sm text-slate-300">
-              <li><span>🌿 Calm & Relaxed</span></li>
-              <li><span>⛰️ Adventure & Nature</span></li>
-              <li><span>🏛️ Historical & Cultural</span></li>
-              <li><span>🕉️ Spiritual & Peace</span></li>
-              <li><span>🎉 Party & Nightlife</span></li>
-              <li><span>🍲 Foodie & Culinary</span></li>
+              <li className="flex items-center gap-2"><Palmtree size={14} className="text-[#a3d9bc]" /><span>Calm & Relaxed</span></li>
+              <li className="flex items-center gap-2"><Mountain size={14} className="text-[#a3d9bc]" /><span>Adventure & Nature</span></li>
+              <li className="flex items-center gap-2"><Landmark size={14} className="text-[#a3d9bc]" /><span>Historical & Cultural</span></li>
+              <li className="flex items-center gap-2"><Flower2 size={14} className="text-[#a3d9bc]" /><span>Spiritual & Peace</span></li>
+              <li className="flex items-center gap-2"><Music size={14} className="text-[#a3d9bc]" /><span>Party & Nightlife</span></li>
+              <li className="flex items-center gap-2"><UtensilsCrossed size={14} className="text-[#a3d9bc]" /><span>Foodie & Culinary</span></li>
             </ul>
           </div>
         </div>

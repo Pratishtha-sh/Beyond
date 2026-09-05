@@ -4,19 +4,28 @@ from __future__ import annotations
 
 import json
 import os
+import re
+import traceback
 from datetime import date, timedelta
 from pathlib import Path
 from typing import List, Optional
+
+from dotenv import load_dotenv
+
+load_dotenv()
 
 import httpx
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+from groq import Groq
 from adapters import TripPlanRequest, to_frontend_itinerary, trip_request_to_state
-from planner_agent import PlannerState, _select_summary_places, build_graph
+from agents.planner_agent import PlannerState, _select_summary_places, build_graph, create_initial_state
 from general_planner import (
+    _extract_json,
     enrich_swap_alternatives,
+    fetch_pexels_image,
     find_destination,
     generate_general_itinerary,
     generate_swap_query,
@@ -24,7 +33,21 @@ from general_planner import (
     is_known_destination,
 )
 
-GOOGLE_PLACES_API_KEY = os.getenv("Google_places_api") or os.getenv("GOOGLE_PLACES_API_KEY", "")
+GROQ_API_KEY = os.getenv("Groq_api_key") or os.getenv("GROQ_API_KEY", "")
+groq_client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
+LLM_MODEL = "openai/gpt-oss-120b"
+GOOGLE_PLACES_API_KEY = (
+    os.getenv("Google_places_api")
+    or os.getenv("GOOGLE_PLACES_API_KEY")
+    or os.getenv("GOOGLE_PLACES_API")
+    or ""
+)
+TAVILY_API_KEY = (
+    os.getenv("Tavily_api")
+    or os.getenv("TAVILY_API_KEY")
+    or os.getenv("TAVILY_API")
+    or ""
+)
 
 app = FastAPI(title="Beyond Planner API", version="1.0.0")
 
@@ -44,9 +67,8 @@ app.add_middleware(
 ITINERARY_FILE = Path(__file__).with_name("itinerary_output.json")
 SUMMARY_PLACES_FILE = Path(__file__).with_name("summary_places_output.json")
 
-# ── Lazy planner singleton ────────────────────────────────────────────────────
+# Lazy planner singleton
 _planner = None
-
 
 def _get_planner():
     global _planner
@@ -54,8 +76,7 @@ def _get_planner():
         _planner = build_graph()
     return _planner
 
-
-# ── Save helper ───────────────────────────────────────────────────────────────
+# Save helper
 
 def _save_state(state: PlannerState) -> None:
     """Persist the full planner state to itinerary_output.json for future use."""
@@ -80,7 +101,6 @@ def _save_state(state: PlannerState) -> None:
     except Exception as exc:
         print(f"[WARN] Could not save itinerary_output.json: {exc}")
 
-
 def _save_summary_places(state: PlannerState) -> None:
     """Persist the summary places to summary_places_output.json for future use."""
     try:
@@ -103,8 +123,7 @@ def _save_summary_places(state: PlannerState) -> None:
     except Exception as exc:
         print(f"[WARN] Could not save summary_places_output.json: {exc}")
 
-
-# ── Saved-file fallback ───────────────────────────────────────────────────────
+# Saved-file fallback
 
 def _load_saved_fallback(req: TripPlanRequest) -> dict:
     """
@@ -120,7 +139,7 @@ def _load_saved_fallback(req: TripPlanRequest) -> dict:
     saved_itin = None
     start_date = date.fromisoformat(req.trip_start_date)
 
-    # ── Primary path: rich 'itinerary' object ─────────────────────────────────
+    # Primary path: rich 'itinerary' object
     if saved_itin and isinstance(saved_itin, dict) and saved_itin.get("days"):
         saved_days = saved_itin["days"]
         adapted_days = []
@@ -147,7 +166,7 @@ def _load_saved_fallback(req: TripPlanRequest) -> dict:
         }
         return to_frontend_itinerary(req, {"itinerary": adapted_itin})
 
-    # ── Secondary path: rebuild from raw places list ───────────────────────────
+    # Secondary path: rebuild from raw places list
     cities = raw_data.get("cities") or [req.destination]
     places = _select_summary_places(raw_data.get("places") or [], req.travel_style, max_total=40, max_per_city=10)
     days = []
@@ -209,8 +228,7 @@ def _load_saved_fallback(req: TripPlanRequest) -> dict:
         "days": days,
     }
 
-
-# ── General planner helper ────────────────────────────────────────────────────
+# General planner helper
 
 def _run_general_planner(req: TripPlanRequest) -> dict | None:
     """
@@ -240,8 +258,10 @@ def _run_general_planner(req: TripPlanRequest) -> dict | None:
             return None
 
         # Build a minimal state-like dict for the adapter
-        pseudo_state = {"itinerary": itinerary}
+        pseudo_state = {"itinerary": itinerary, "source": "general_planner"}
         result = to_frontend_itinerary(req, pseudo_state)
+        result["source"] = "general_planner"
+        result["planner_type"] = "general_planner"
 
         if not result.get("days"):
             return None
@@ -254,7 +274,6 @@ def _run_general_planner(req: TripPlanRequest) -> dict | None:
     except Exception as exc:
         print(f"[GENERAL PLANNER] Error: {exc}")
         return None
-
 
 def _save_general_itinerary(req: TripPlanRequest, itinerary: dict) -> None:
     """Persist general planner output to itinerary_output.json."""
@@ -283,15 +302,13 @@ def _save_general_itinerary(req: TripPlanRequest, itinerary: dict) -> None:
     except Exception as exc:
         print(f"[WARN] Could not save general planner output: {exc}")
 
-
-# ── Endpoints ─────────────────────────────────────────────────────────────────
+# Endpoints
 
 @app.get("/api/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
 
-
-# ── Swap Alternatives ─────────────────────────────────────────────────────────
+# Swap Alternatives
 
 class SwapRequest(BaseModel):
     place: str
@@ -299,7 +316,6 @@ class SwapRequest(BaseModel):
     city: str
     destination: str
     travel_style: str = "calm"
-
 
 class SwapAlternative(BaseModel):
     name: str
@@ -310,7 +326,6 @@ class SwapAlternative(BaseModel):
     tips: Optional[str] = None
     fun_fact: Optional[str] = None
     image: Optional[str] = None
-
 
 @app.post("/api/swap-alternatives", response_model=List[SwapAlternative])
 async def swap_alternatives(req: SwapRequest) -> list:
@@ -411,8 +426,7 @@ async def swap_alternatives(req: SwapRequest) -> list:
     print(f"[SWAP] Returning {len(alternatives)} enriched alternatives for '{req.place}'")
     return alternatives
 
-
-# ── Add Activity ──────────────────────────────────────────────────────────────
+# Add Activity
 
 class AddActivityRequest(BaseModel):
     query: str                  # natural-language user request, e.g. "a nice rooftop restaurant"
@@ -422,7 +436,6 @@ class AddActivityRequest(BaseModel):
     city: str = ""
     travel_style: str = "calm"
 
-
 class AddActivityResponse(BaseModel):
     place: str
     time: Optional[str] = None
@@ -431,137 +444,218 @@ class AddActivityResponse(BaseModel):
     description: str
     tips: str
     fun_fact: Optional[str] = None
-
+    image: Optional[str] = None
 
 @app.post("/api/add-activity", response_model=AddActivityResponse)
 async def add_activity(req: AddActivityRequest) -> dict:
     """
-    LLM generates a structured ActivityItem from a natural-language query.
-    Uses Google Places API (New) to find a real matching place, then enriches
-    it with a description and tips using the LLM.
+    Interprets user's natural-language activity request.
+    Searches via Google Places API (New), falling back to Tavily Search API if needed.
+    Enriches with engaging description, practical tips, fun fact, and authentic photos.
     """
-    if not GOOGLE_PLACES_API_KEY:
-        raise HTTPException(status_code=503, detail="Google Places API key not configured.")
+    city_context = (req.city or req.destination or "").strip()
 
-    city_context = req.city or req.destination
-
-    # Step 1 — LLM interprets the query into a Places search query
-    system_prompt = (
-        "You are a travel assistant. Given a user's request for an activity, "
-        "generate ONE concise Google Places Text Search query to find a real matching venue. "
-        "Rules:\n"
-        "- Return ONLY the raw query string. No JSON, no quotes, no explanation.\n"
-        "- Keep it under 12 words.\n"
-        "- Always include the city name."
-    )
-    user_msg = (
-        f"User wants to add to {req.slot} in {city_context}: '{req.query}'\n"
-        f"Travel style: {req.travel_style}\n"
-        "Google Places search query:"
-    )
-    try:
-        llm_resp = groq_client.chat.completions.create(
-            model=LLM_MODEL,
-            temperature=0.2,
-            max_tokens=48,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_msg},
-            ],
+    # Step 1 — Clean search query via LLM or heuristic
+    search_query = f"{req.query} in {city_context}".strip()
+    if groq_client:
+        system_prompt = (
+            "You are a travel assistant. Given a user's request for an activity, "
+            "generate ONE concise search query to find a real matching venue or place. "
+            "Rules:\n"
+            "- Return ONLY the raw query string. No JSON, no quotes, no explanation.\n"
+            "- Keep it under 10 words.\n"
+            "- Always include the city name."
         )
-        search_query = llm_resp.choices[0].message.content.strip().strip('"\'')
-    except Exception as exc:
-        search_query = f"{req.query} {city_context}"
-
-    print(f"[ADD-ACTIVITY] Searching Places for: {search_query!r}")
-
-    # Step 2 — Google Places API (New): Text Search
-    headers = {
-        "Content-Type": "application/json",
-        "X-Goog-Api-Key": GOOGLE_PLACES_API_KEY,
-        "X-Goog-FieldMask": "places.displayName,places.formattedAddress,places.rating,places.id,places.primaryTypeDisplayName",
-    }
-    places_payload = {
-        "textQuery": search_query,
-        "languageCode": "en",
-        "regionCode": "IN",
-        "maxResultCount": 1,
-    }
-    place_name = req.query
-    place_address = city_context
-    try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            places_resp = await client.post(
-                "https://places.googleapis.com/v1/places:searchText",
-                headers=headers,
-                json=places_payload,
+        user_msg = (
+            f"User wants to add to {req.slot} in {city_context}: '{req.query}'\n"
+            f"Travel style: {req.travel_style}\n"
+            "Search query:"
+        )
+        try:
+            llm_resp = groq_client.chat.completions.create(
+                model=LLM_MODEL,
+                temperature=0.2,
+                max_tokens=48,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_msg},
+                ],
             )
-        places_data = places_resp.json()
-        if places_resp.status_code == 200 and places_data.get("places"):
-            top = places_data["places"][0]
-            place_name = top.get("displayName", {}).get("text", req.query)
-            place_address = top.get("formattedAddress", city_context)
-    except Exception as exc:
-        print(f"[ADD-ACTIVITY] Places lookup failed: {exc}")
+            candidate_q = llm_resp.choices[0].message.content.strip().strip('"\'')
+            if candidate_q and len(candidate_q) > 2:
+                search_query = candidate_q
+        except Exception as exc:
+            print(f"[ADD-ACTIVITY] Query formulation error: {exc}")
 
-    # Step 3 — LLM generates a rich ActivityItem
+    if not search_query.strip():
+        search_query = f"{req.query} in {city_context}".strip()
+
+    print(f"[ADD-ACTIVITY] Searching for venue with query: {search_query!r}")
+
+    place_name: Optional[str] = None
+    place_address: Optional[str] = None
+    search_snippet: str = ""
+    candidate_image: Optional[str] = None
+
+    # Step 2a — Try Google Places API (New): Text Search
+    if GOOGLE_PLACES_API_KEY:
+        try:
+            headers = {
+                "Content-Type": "application/json",
+                "X-Goog-Api-Key": GOOGLE_PLACES_API_KEY,
+                "X-Goog-FieldMask": "places.displayName,places.formattedAddress,places.rating,places.id,places.primaryTypeDisplayName",
+            }
+            places_payload = {
+                "textQuery": search_query,
+                "languageCode": "en",
+                "maxResultCount": 3,
+            }
+            async with httpx.AsyncClient(timeout=8.0) as client:
+                places_resp = await client.post(
+                    "https://places.googleapis.com/v1/places:searchText",
+                    headers=headers,
+                    json=places_payload,
+                )
+            if places_resp.status_code == 200:
+                places_data = places_resp.json()
+                places_list = places_data.get("places", [])
+                if places_list:
+                    top = places_list[0]
+                    place_name = top.get("displayName", {}).get("text")
+                    place_address = top.get("formattedAddress")
+                    print(f"[ADD-ACTIVITY] Google Places matched: '{place_name}' ({place_address})")
+            else:
+                print(f"[ADD-ACTIVITY] Google Places status {places_resp.status_code}: {places_resp.text[:150]}")
+        except Exception as exc:
+            print(f"[ADD-ACTIVITY] Google Places search failed: {exc}")
+
+    # Step 2b — Fallback to Tavily Search API if Google Places yielded nothing
+    if not place_name and TAVILY_API_KEY:
+        try:
+            print(f"[ADD-ACTIVITY] Falling back to Tavily search for: {search_query!r}")
+            tavily_payload = {
+                "api_key": TAVILY_API_KEY,
+                "query": f"{search_query} attractions places in {city_context}",
+                "max_results": 3,
+                "search_depth": "basic",
+                "include_images": True,
+            }
+            async with httpx.AsyncClient(timeout=8.0, verify=False) as client:
+                tavily_resp = await client.post(
+                    "https://api.tavily.com/search",
+                    json=tavily_payload,
+                )
+            if tavily_resp.status_code == 200:
+                t_data = tavily_resp.json()
+                t_results = t_data.get("results", [])
+                if t_results:
+                    top_t = t_results[0]
+                    raw_title = top_t.get("title", "")
+                    cand_name = re.split(r"\s*[-|–—:]\s*", raw_title)[0].strip()
+                    place_name = cand_name or raw_title
+                    search_snippet = top_t.get("content", "")
+                    place_address = city_context
+                    print(f"[ADD-ACTIVITY] Tavily matched: '{place_name}'")
+                images = t_data.get("images", [])
+                if images and isinstance(images, list) and isinstance(images[0], str) and images[0].startswith("http"):
+                    candidate_image = images[0]
+            else:
+                print(f"[ADD-ACTIVITY] Tavily status {tavily_resp.status_code}: {tavily_resp.text[:150]}")
+        except Exception as exc:
+            print(f"[ADD-ACTIVITY] Tavily search failed: {exc}")
+
+    # Fallback if both searches return no match
+    if not place_name:
+        place_name = req.query.strip().title()
+        place_address = city_context
+
+    # Step 3 — LLM generates a rich, storytelling ActivityItem
     enrich_system = (
-        "You are a travel storyteller for the Beyond app. "
-        "Return a JSON object for a single travel activity. No extra text.\n"
-        "Schema: {\"place\": str, \"duration\": \"Xh\", "
-        "\"category\": str, \"description\": str (2-3 sentences, vivid), "
-        "\"tips\": str (practical insider tip), \"fun_fact\": str or null}\n"
+        "You are an expert travel storyteller for the Beyond app. "
+        "Return a JSON object for a single travel activity. No extra text, no markdown codeblocks, no reasoning.\n"
+        "Output JSON schema:\n"
+        "{\n"
+        '  "place": "Name of the venue, City",\n'
+        '  "duration": "1.5h or 2h",\n'
+        '  "category": "Sightseeing / Dining / Culture / Nature / Adventure",\n'
+        '  "description": "2-3 engaging, vivid sentences about the experience and ambiance.",\n'
+        '  "tips": "One practical insider tip (best timing, dress code, ticketing, what to try).",\n'
+        '  "fun_fact": "A fascinating historical or local trivia fact (or null)."\n'
+        "}\n"
         "CRITICAL: No emojis, no em-dashes anywhere."
     )
     enrich_user = (
         f"Place found: {place_name}\n"
         f"Address: {place_address}\n"
+        f"Snippet info: {search_snippet[:250] if search_snippet else 'N/A'}\n"
         f"User request: {req.query}\n"
         f"Slot: {req.slot}\n"
         f"Destination: {req.destination} | Travel style: {req.travel_style}\n"
-        "Generate the activity JSON now."
+        "Generate the single activity JSON object now."
     )
-    try:
-        enrich_resp = groq_client.chat.completions.create(
-            model=LLM_MODEL,
-            temperature=0.4,
-            max_tokens=256,
-            response_format={"type": "json_object"},
-            messages=[
-                {"role": "system", "content": enrich_system},
-                {"role": "user", "content": enrich_user},
-            ],
-        )
-        raw = enrich_resp.choices[0].message.content.strip()
-        activity_data = json.loads(raw)
-    except Exception as exc:
-        print(f"[ADD-ACTIVITY] LLM enrichment failed: {exc}")
-        activity_data = {
-            "place": f"{place_name}, {city_context}",
-            "duration": "2h",
-            "category": "Explore",
-            "description": f"A great stop in {city_context} based on your request.",
-            "tips": "Check opening hours and book in advance if possible.",
-            "fun_fact": None,
-        }
+    activity_data: dict = {}
+    if groq_client:
+        try:
+            enrich_resp = groq_client.chat.completions.create(
+                model=LLM_MODEL,
+                temperature=0.3,
+                max_tokens=300,
+                messages=[
+                    {"role": "system", "content": enrich_system},
+                    {"role": "user", "content": enrich_user},
+                ],
+            )
+            raw = enrich_resp.choices[0].message.content.strip()
+            parsed = _extract_json(raw)
+            if isinstance(parsed, dict):
+                activity_data = parsed
+        except Exception as exc:
+            print(f"[ADD-ACTIVITY] LLM enrichment failed: {exc}")
 
-    # Ensure required fields exist
-    activity_data.setdefault("place", f"{place_name}, {city_context}")
-    activity_data.setdefault("duration", "2h")
-    activity_data.setdefault("category", "Explore")
-    activity_data.setdefault("description", f"An activity in {city_context}.")
-    activity_data.setdefault("tips", "Check opening hours before visiting.")
+    def _sanitize_val(val: Optional[str], default: str = "") -> str:
+        s = str(val or default).strip()
+        s = s.replace("—", " - ").replace("–", " - ")
+        return re.sub(r"[\U00010000-\U0010ffff]", "", s).strip()
 
-    print(f"[ADD-ACTIVITY] Returning activity: {activity_data.get('place')}")
+    raw_place = activity_data.get("place") or f"{place_name}, {city_context}"
+    activity_data["place"] = _sanitize_val(raw_place, f"{place_name}, {city_context}")
+    activity_data["duration"] = _sanitize_val(activity_data.get("duration"), "2h")
+    activity_data["category"] = _sanitize_val(activity_data.get("category"), "Explore")
+    activity_data["description"] = _sanitize_val(
+        activity_data.get("description"),
+        f"A wonderful {req.slot} stop in {city_context} tailored to your request.",
+    )
+    activity_data["tips"] = _sanitize_val(
+        activity_data.get("tips"),
+        "Check operating hours and book in advance when possible.",
+    )
+    if activity_data.get("fun_fact"):
+        activity_data["fun_fact"] = _sanitize_val(activity_data.get("fun_fact"))
+    else:
+        activity_data["fun_fact"] = None
+
+    # Step 4 — Image Lookup
+    image_url = candidate_image
+    if not image_url:
+        try:
+            image_url = fetch_pexels_image(
+                place_name,
+                fallback_query=f"{place_name} {city_context}",
+                category=activity_data.get("category"),
+            )
+        except Exception as exc:
+            print(f"[ADD-ACTIVITY] Image search failed: {exc}")
+
+    activity_data["image"] = image_url
+
+    print(f"[ADD-ACTIVITY] Successfully created activity: {activity_data.get('place')}")
     return activity_data
-
 
 @app.get("/api/destinations")
 def get_destinations() -> dict:
     """Return the list of known destination names from the dataset."""
     names = get_all_destination_names()
     return {"destinations": names, "count": len(names)}
-
 
 @app.get("/api/saved-itinerary")
 def get_saved_itinerary() -> dict:
@@ -570,7 +664,6 @@ def get_saved_itinerary() -> dict:
         raise HTTPException(status_code=404, detail="itinerary_output.json not found")
     with ITINERARY_FILE.open("r", encoding="utf-8") as fh:
         return json.load(fh)
-
 
 @app.post("/api/plan-trip-general")
 def plan_trip_general(req: TripPlanRequest) -> dict:
@@ -593,7 +686,6 @@ def plan_trip_general(req: TripPlanRequest) -> dict:
         )
     return result
 
-
 @app.post("/api/plan-trip")
 def plan_trip(req: TripPlanRequest) -> dict:
     """
@@ -601,7 +693,7 @@ def plan_trip(req: TripPlanRequest) -> dict:
     2. Fall back to the live LangGraph planner.
     3. Last resort: fall back to saved itinerary_output.json.
     """
-    # ── Step 0: Try general planner for dataset destinations ──────────────────
+    # Step 0: Try general planner for dataset destinations
     if is_known_destination(req.destination):
         print(f"[PLANNER] '{req.destination}' found in dataset — trying general planner first...")
         general_result = _run_general_planner(req)
@@ -609,7 +701,7 @@ def plan_trip(req: TripPlanRequest) -> dict:
             return general_result
         print("[PLANNER] General planner failed — falling through to live planner.")
 
-    # ── Step 1: Live planner ──────────────────────────────────────────────────
+    # Step 1: Live planner
     live_error: Exception | None = None
     try:
         print(f"[PLANNER] Running live planner for '{req.destination}' ({req.days} days)...")
@@ -623,12 +715,15 @@ def plan_trip(req: TripPlanRequest) -> dict:
         if not itin.get("days"):
             raise ValueError("Planner returned an empty days list")
 
-        # ── Step 2: Save to disk ──────────────────────────────────────────────
+        # Step 2: Save to disk
         _save_state(final_state)
         _save_summary_places(final_state)
 
-        # ── Step 3: Format & return ───────────────────────────────────────────
+        # Step 3: Format & return
+        final_state["source"] = "planner_agent"
         result = to_frontend_itinerary(req, final_state)
+        result["source"] = "planner_agent"
+        result["planner_type"] = "planner_agent"
         if result.get("days"):
             return result
         raise ValueError("to_frontend_itinerary returned empty days")
@@ -637,7 +732,7 @@ def plan_trip(req: TripPlanRequest) -> dict:
         live_error = exc
         print(f"[WARN] Live planner failed: {exc}")
 
-    # ── Fallback: last saved itinerary ────────────────────────────────────────
+    # Fallback: last saved itinerary
     try:
         print("[FALLBACK] Falling back to saved itinerary_output.json...")
         return _load_saved_fallback(req)
@@ -649,3 +744,229 @@ def plan_trip(req: TripPlanRequest) -> dict:
                 f"is available ({fallback_exc})."
             ),
         )
+
+class ChatPlanRequest(BaseModel):
+    query: str
+    itinerary: Optional[dict] = None
+    destination: Optional[str] = None
+    days: Optional[int] = None
+    travel_style: Optional[str] = None
+    hotel_type: Optional[str] = None
+    budget_tier: Optional[str] = None
+    transport_type: Optional[str] = None
+    number_of_people: Optional[int] = None
+    party_type: Optional[str] = None
+    start_date: Optional[str] = None
+
+@app.post("/api/chat-plan")
+def chat_plan(req: ChatPlanRequest) -> dict:
+    """
+    Direct endpoint for chat-based trip generation and modification.
+    Processes user query using the Planner Agent (LangGraph + Groq LLM + Tools).
+    Returns updated itinerary matching the App.tsx format along with hotel and transport options.
+    """
+    try:
+        initial_state = create_initial_state(
+            destination=req.destination or "Goa",
+            days=req.days or 3,
+            travel_style=req.travel_style or "calm",
+            number_of_people=req.number_of_people or 2,
+            party_type=req.party_type or "friends",
+            start_date=req.start_date or (date.today() + timedelta(days=7)).strftime("%Y-%m-%d"),
+            user_query=req.query,
+            hotel_type=req.hotel_type or "Mid-range",
+            budget_tier=req.budget_tier or "₹5K – ₹15K",
+            transport_type=req.transport_type or "Flight",
+        )
+        if req.itinerary:
+            initial_state["itinerary"] = req.itinerary
+
+        planner = _get_planner()
+        final_state = planner.invoke(initial_state)
+
+        intent = final_state.get("intent", "generate_itinerary")
+        user_message = final_state.get("user_message", "Your itinerary has been generated!")
+
+        # Fast return for unsupported / off-topic / prompt injection queries
+        if intent == "unsupported_query":
+            return {
+                "intent": intent,
+                "user_message": user_message,
+                "itinerary": req.itinerary,
+                "hotel_options": final_state.get("hotel_options") or [],
+                "selected_hotel": final_state.get("selected_hotel"),
+                "transport_options": final_state.get("transport_options") or [],
+                "selected_transport": final_state.get("selected_transport"),
+                "budget_analysis": final_state.get("budget_analysis"),
+                "optimization_confirmation": None,
+                "api_errors": final_state.get("api_errors") or [],
+            }
+
+        itinerary = final_state.get("itinerary") or {}
+
+        # If itinerary exists, format days properly
+        if itinerary and "days" in itinerary and itinerary["days"]:
+            itinerary["source"] = "planner_agent"
+            itinerary["planner_type"] = "planner_agent"
+            itinerary.setdefault("request", {
+                "destination": final_state.get("destination", "Your Trip"),
+                "trip_start_date": final_state.get("start_date", ""),
+                "days": final_state.get("days", len(itinerary.get("days", []))),
+                "travel_style": final_state.get("travel_style", "calm"),
+                "number_of_people": final_state.get("number_of_people", 2),
+                "party_type": final_state.get("party_type", "friends"),
+            })
+            itinerary.setdefault("summary", f"A {final_state.get('days', 3)}-day journey through {final_state.get('destination', 'your destination')}.")
+
+            if final_state.get("selected_transport") and not itinerary.get("best_flight"):
+                itinerary["best_flight"] = final_state["selected_transport"]
+                itinerary["transport"] = final_state["selected_transport"]
+            if final_state.get("hotel_options") and not itinerary.get("hotel_options"):
+                itinerary["hotel_options"] = final_state["hotel_options"]
+                itinerary["selected_hotel"] = final_state.get("selected_hotel")
+            budget_analysis = final_state.get("budget_analysis") or {}
+            if isinstance(budget_analysis, dict) and budget_analysis.get("breakdown") and not itinerary.get("budget_breakdown"):
+                itinerary["budget_breakdown"] = budget_analysis["breakdown"]
+
+        # Build optimization_confirmation for frontend confirmation card
+        optimization_confirmation = None
+        intent = final_state.get("intent", "generate_itinerary")
+        budget_analysis = final_state.get("budget_analysis") or {}
+        if intent == "budget_optimization" and isinstance(budget_analysis, dict):
+            alternatives_found = budget_analysis.get("alternatives_found", [])
+            conf: dict = {"requires_confirmation": bool(alternatives_found), "total_savings": 0.0}
+            for alt in alternatives_found:
+                cat = alt.get("category", "")
+                if cat == "transport":
+                    all_alts = (alt.get("details") or {}).get("all_alternatives", [])
+                    conf["transport"] = {
+                        "original_mode": alt.get("original_item", ""),
+                        "original_cost": alt.get("original_cost", 0),
+                        "alternatives": all_alts,
+                    }
+                elif cat == "accommodation":
+                    conf["hotel"] = {
+                        "original_name": alt.get("original_item", ""),
+                        "original_cost": alt.get("original_cost", 0),
+                        "suggested_name": alt.get("suggested_alternative", ""),
+                        "new_cost": alt.get("new_cost", 0),
+                        "savings": alt.get("savings", 0),
+                        "booking_link": alt.get("booking_link", ""),
+                        "details": alt.get("details", {}),
+                    }
+                conf["total_savings"] = round(conf["total_savings"] + float(alt.get("savings", 0)), 2)
+            optimization_confirmation = conf
+
+        # Collect API errors / warnings for frontend display
+        api_errors = list(final_state.get("api_errors") or [])
+        if isinstance(budget_analysis, dict) and budget_analysis.get("api_errors"):
+            for err in budget_analysis.get("api_errors", []):
+                if err not in api_errors:
+                    api_errors.append(err)
+
+        if optimization_confirmation is not None:
+            optimization_confirmation["api_errors"] = api_errors
+
+        return {
+            "intent": intent,
+            "user_message": final_state.get("user_message", "Your itinerary has been generated!"),
+            "itinerary": itinerary,
+            "hotel_options": final_state.get("hotel_options") or [],
+            "selected_hotel": final_state.get("selected_hotel"),
+            "transport_options": final_state.get("transport_options") or [],
+            "selected_transport": final_state.get("selected_transport"),
+            "budget_analysis": budget_analysis,
+            "optimization_confirmation": optimization_confirmation,
+            "api_errors": api_errors,
+        }
+    except Exception as exc:
+        print(f"[CHAT-PLAN] Error running planner agent: {exc}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(exc))
+
+# Apply Optimization — patches itinerary when user confirms a switch
+
+class ApplyOptimizationRequest(BaseModel):
+    itinerary: dict
+    category: str                   # "transport" | "hotel"
+    selected_alternative: dict      # { mode, provider, new_cost, booking_link, ... }
+    num_people: int = 2
+    days: int = 3
+
+@app.post("/api/apply-optimization")
+def apply_optimization(req: ApplyOptimizationRequest) -> dict:
+    """
+    Applies a user-confirmed budget optimization to the itinerary.
+    Patches transport or hotel data in-place and recalculates budget totals.
+    Returns the updated itinerary so the frontend can replace its state.
+    """
+    itinerary = req.itinerary
+    alt = req.selected_alternative
+    category = req.category.lower()
+
+    if category == "transport":
+        new_mode = alt.get("mode", "Train")
+        new_cost = float(alt.get("new_cost", 0))
+        provider = alt.get("provider", "")
+        booking_link = alt.get("booking_link", "")
+        price_per_person = round(new_cost / max(req.num_people * 2, 1), 2)  # roundtrip per person
+
+        transport_patch = {
+            "mode": new_mode,
+            "provider": provider,
+            "price": price_per_person,
+            "price_per_person": price_per_person,
+            "total_price": new_cost,
+            "booking_link": booking_link,
+        }
+        itinerary["best_flight"] = transport_patch
+        itinerary["transport"] = transport_patch
+
+        # Recalculate budget breakdown
+        bd = itinerary.get("budget_breakdown") or {}
+        old_transport = float(bd.get("transport_total", 0))
+        bd["transport_total"] = new_cost
+        if old_transport and bd.get("grand_total"):
+            bd["grand_total"] = round(bd["grand_total"] - old_transport + new_cost, 2)
+            bd["per_person_total"] = round(bd["grand_total"] / max(req.num_people, 1), 2)
+        itinerary["budget_breakdown"] = bd
+
+    elif category == "hotel":
+        new_name = alt.get("name") or alt.get("suggested_alternative", "Budget Hotel")
+        new_cost = float(alt.get("new_cost", 0))
+        price_per_night = round(new_cost / max(req.days, 1), 2)
+        provider = alt.get("platform", alt.get("provider", "Booking.com"))
+        booking_link = alt.get("booking_link", "")
+
+        hotel_patch = {
+            "name": new_name,
+            "price_per_night": price_per_night,
+            "total_cost": new_cost,
+            "platform": provider,
+            "booking_link": booking_link,
+            "rating": alt.get("rating"),
+            "image_url": alt.get("image_url", ""),
+        }
+        itinerary["selected_hotel"] = hotel_patch
+
+        # Update per-day selected_hotel and top-level hotel_options
+        for day in itinerary.get("days", []):
+            if isinstance(day, dict):
+                day["selected_hotel"] = hotel_patch
+
+        # Recalculate budget breakdown
+        bd = itinerary.get("budget_breakdown") or {}
+        old_hotel = float(bd.get("hotel_total", 0))
+        bd["hotel_total"] = new_cost
+        bd["hotel_per_night"] = price_per_night
+        if old_hotel and bd.get("grand_total"):
+            bd["grand_total"] = round(bd["grand_total"] - old_hotel + new_cost, 2)
+            bd["per_person_total"] = round(bd["grand_total"] / max(req.num_people, 1), 2)
+        itinerary["budget_breakdown"] = bd
+
+    return {
+        "success": True,
+        "category": category,
+        "itinerary": itinerary,
+        "message": f"Switched to {alt.get('mode', alt.get('name', 'new option'))}. Budget recalculated.",
+    }

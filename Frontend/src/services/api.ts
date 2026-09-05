@@ -49,8 +49,119 @@ export async function addActivity(params: AddActivityParams): Promise<import('..
 
 
 
+export interface ChatPlanParams {
+  query: string;
+  itinerary?: any;
+  destination?: string;
+  days?: number;
+  travel_style?: string;
+  hotel_type?: string;
+  budget_tier?: string;
+  transport_type?: string;
+  number_of_people?: number;
+  party_type?: string;
+  start_date?: string;
+}
+
+export interface ChatPlanResult {
+  intent: string;
+  user_message: string;
+  itinerary: TripPlanResponse | null;
+  hotel_options?: any[];
+  selected_hotel?: any;
+  transport_options?: any[];
+  selected_transport?: any;
+  budget_analysis?: any;
+  optimization_confirmation?: OptimizationConfirmation | null;
+  api_errors?: string[];
+}
+
+export interface TransportAlternative {
+  mode: string;
+  provider: string;
+  new_cost: number;
+  savings: number;
+  booking_link: string;
+  estimated: boolean;
+  details?: any;
+}
+
+export interface OptimizationConfirmation {
+  requires_confirmation: boolean;
+  total_savings: number;
+  transport?: {
+    original_mode: string;
+    original_cost: number;
+    alternatives: TransportAlternative[];
+  };
+  hotel?: {
+    original_name: string;
+    original_cost: number;
+    suggested_name: string;
+    new_cost: number;
+    savings: number;
+    booking_link: string;
+    details: any;
+  };
+  api_errors?: string[];
+}
+
+export async function chatPlan(params: ChatPlanParams): Promise<ChatPlanResult> {
+  const response = await fetch(`${BASE_URL}/chat-plan`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  });
+  if (!response.ok) {
+    throw new Error(`Chat Plan API error: ${response.status}`);
+  }
+  const data = await response.json();
+  if (data.itinerary && data.itinerary.days) {
+    data.itinerary = normalizeTripResponse(data.itinerary);
+  }
+  return data;
+}
+
 function normalizeTripResponse(payload: any): TripPlanResponse {
+  const source = payload?.source || payload?.planner_type || (payload?.best_flight || payload?.budget_breakdown ? 'planner_agent' : 'general_planner');
+  const isPlannerAgent = source === 'planner_agent';
+
+  const hotelOptions = isPlannerAgent ? (payload?.hotel_options || []) : undefined;
+  const bestFlight = isPlannerAgent ? (payload?.best_flight || payload?.transport || undefined) : undefined;
+  const budgetBreakdown = isPlannerAgent ? (payload?.budget_breakdown || undefined) : undefined;
+
+  const mapSlotActivities = (acts: any) => {
+    if (!Array.isArray(acts)) return [];
+    return acts
+      .filter((a: any) => a && a.place && a.place.trim() && a.place.trim() !== '-' && a.place.trim() !== '—')
+      .map((a: any) => ({
+        ...a,
+        place: String(a.place).trim(),
+        duration: a.duration || '1.5h',
+        category: a.category || 'Explore',
+        description: a.description || a.desc || '',
+        tips: a.tips || a.tip || '',
+        fun_fact: a.fun_fact || a.funFact || undefined,
+        image: a.image || undefined,
+      }));
+  };
+
+  const rawDays = Array.isArray(payload?.days) ? payload.days : [];
+  const days = rawDays.map((d: any) => ({
+    date: d?.date ?? '',
+    theme: d?.theme ?? 'Day Exploration',
+    weather: d?.weather ?? d?.weather_summary ?? 'Sunny & pleasant',
+    morning: mapSlotActivities(d?.morning),
+    afternoon: mapSlotActivities(d?.afternoon),
+    evening: mapSlotActivities(d?.evening),
+    notes: d?.notes ?? d?.daily_notes ?? '',
+    hotel_options: isPlannerAgent ? (d?.hotel_options || hotelOptions) : undefined,
+    selected_hotel: isPlannerAgent ? (d?.selected_hotel || (hotelOptions && hotelOptions.length > 0 ? hotelOptions[0] : undefined)) : undefined,
+  }));
+
   return {
+    source,
+    planner_type: source,
     request: {
       destination: payload?.request?.destination ?? payload?.destination ?? 'Your Trip',
       trip_start_date: payload?.request?.trip_start_date ?? payload?.trip_start_date ?? '',
@@ -60,7 +171,20 @@ function normalizeTripResponse(payload: any): TripPlanResponse {
       party_type: payload?.request?.party_type ?? payload?.party_type ?? 'solo',
     },
     summary: payload?.summary ?? 'A beautifully planned escape.',
-    days: Array.isArray(payload?.days) ? payload.days : [],
+    overview: payload?.overview,
+    places_covered: payload?.places_covered,
+    fun_facts: payload?.fun_facts,
+    must_try_food: payload?.must_try_food,
+    hidden_gems: payload?.hidden_gems,
+    local_culture: payload?.local_culture,
+    travel_hacks: payload?.travel_hacks,
+    budget_info: payload?.budget_info,
+    best_flight: bestFlight,
+    transport: bestFlight,
+    hotel_options: hotelOptions,
+    selected_hotel: isPlannerAgent ? (payload?.selected_hotel || (hotelOptions && hotelOptions.length > 0 ? hotelOptions[0] : undefined)) : undefined,
+    budget_breakdown: budgetBreakdown,
+    days: days,
   };
 }
 
@@ -209,3 +333,30 @@ export async function healthCheck(): Promise<boolean> {
   }
 }
 
+
+export interface ApplyOptimizationParams {
+  itinerary: any;
+  category: 'transport' | 'hotel';
+  selected_alternative: TransportAlternative | any;
+  num_people?: number;
+  days?: number;
+}
+
+export interface ApplyOptimizationResult {
+  success: boolean;
+  category: string;
+  itinerary: any;
+  message: string;
+}
+
+export async function applyOptimization(params: ApplyOptimizationParams): Promise<ApplyOptimizationResult> {
+  const response = await fetch(`${BASE_URL}/apply-optimization`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  });
+  if (!response.ok) {
+    throw new Error(`Apply Optimization API error: ${response.status}`);
+  }
+  return response.json();
+}
