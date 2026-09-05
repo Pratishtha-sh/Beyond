@@ -1,4 +1,4 @@
-# Beyond 🌍✈️
+# Beyond 
 > **Autonomous Agentic AI Travel Planner for Dynamic, End-to-End Itinerary Generation**
 
 [![React](https://img.shields.io/badge/React-18.3-61dafb?style=flat-square&logo=react)](https://react.dev/)
@@ -45,74 +45,69 @@ Paired with a modern React frontend featuring animated carousels, destination pr
 ## 🏗️ System Architecture
 
 ```mermaid
+---
+config:
+  layout: dagre
+---
 flowchart TB
-    subgraph Client["Frontend (React + TypeScript + Vite)"]
-        UI["User Interface / Chatbox & Wizard"]
-        Carousel["Destination Showcase Carousel"]
-        ItineraryView["Interactive Itinerary & Timeline"]
-        UI <--> Carousel
-        UI <--> ItineraryView
-    end
+ subgraph Path1["Quick Plan - Pick & Customize"]
+    direction TB
+        Cards(["Browses destination cards\n(state / city) + basic info"])
+        Draft(["Gets a general\nitinerary instantly"])
+        Customize(["Swaps, deletes or\nadds activities"])
+        DraftGen["Draft Generator\npulls from Destination Dataset"]
+        SwapAPI["Alternatives Search\n(Places API)"]
+        AddAPI["Text-to-Activity Search\n+ Re-ranking"]
+  end
+ subgraph Path2["Dream Plan — Chat with AI"]
+    direction TB
+        Chat(["Describes dream trip:\nbudget, hotel, transport,\ntimeline, destination"])
+        SmartDraft(["Gets a tailored\nperfect itinerary"])
+        RefineChat(["Refines via chat,\nswap, delete or add"])
+        PlannerAgent["Planner Agent"]
+        BudgetAgent["Budget Agent"]
+        Tools[("hotel_search /\ntransport_search tools")]
+  end
+    Start(["User lands on site"]) --> Choice{"How do they\nwant to plan?"}
+    Cards --> DraftGen
+    DraftGen --> Draft
+    Draft --> Customize
+    Customize -- Swap --> SwapAPI
+    SwapAPI --> Customize
+    Customize -- Add: 'historical fort' --> AddAPI
+    AddAPI --> Customize
+    Chat --> PlannerAgent
+    PlannerAgent <--> BudgetAgent & Tools
+    BudgetAgent <--> Tools
+    PlannerAgent --> SmartDraft
+    SmartDraft --> RefineChat
+    RefineChat -- chat / swap / add / delete --> PlannerAgent
+    Choice -- I know where\nI'm going --> Cards
+    Choice -- I have a dream\nvacation in mind --> Chat
+    Customize --> Final(["Final itinerary\nready to view"])
+    RefineChat --> Final
 
-    subgraph Gateway["Backend API Gateway (FastAPI)"]
-        API["FastAPI App (CORS / Endpoints)"]
-        Adapter["Trip Request Adapter & State Manager"]
-        API <--> Adapter
-    end
-
-    subgraph MultiAgent["LangGraph Agentic Orchestration"]
-        Classifier["1. Intent Classifier & Query Parser\n(Groq LLM)"]
-        Router{"Intent Router"}
-
-        subgraph Pipeline["Itinerary Pipeline"]
-            PlannerAgent["2. Places & Activity Synthesis"]
-            HotelSearch["3. Hotel Search & Re-Ranking"]
-            TransportSearch["4. Multi-Modal Transport Routing"]
-            BudgetAgent["5. Budget Feasibility & Balancing"]
-        end
-
-        subgraph Updaters["Human-in-the-Loop Handlers"]
-            SwapActivity["Activity Swap Handler"]
-            ChangeHotel["Hotel Swap Handler"]
-            OptBudget["Budget Optimization Handler"]
-        end
-    end
-
-    subgraph External["External APIs & Live Tools"]
-        PlacesAPI[("Google Places API (v2)")]
-        HotelAPI[("SerpApi: Google Hotels")]
-        TransportAPI[("SerpApi Flights / IRCTC Trains")]
-        PexelsAPI[("Pexels Media API")]
-        GroqCloud[("Groq Inference Engine")]
-    end
-
-    UI -->|HTTP POST /plan-trip| API
-    Adapter -->|State Payload| Classifier
-
-    Classifier --> Router
-    Router -->|generate_itinerary| PlannerAgent
-    PlannerAgent --> HotelSearch
-    HotelSearch --> TransportSearch
-    TransportSearch --> BudgetAgent
-    BudgetAgent -->|Final Enriched State| Adapter
-
-    Router -->|activity_update| SwapActivity
-    Router -->|hotel_change| ChangeHotel
-    Router -->|budget_optimization| OptBudget
-
-    SwapActivity -->|Updated State| Adapter
-    ChangeHotel -->|Updated State| Adapter
-    OptBudget -->|Updated State| Adapter
-
-    PlannerAgent <--> PlacesAPI
-    HotelSearch <--> HotelAPI
-    TransportSearch <--> TransportAPI
-    PlannerAgent <--> PexelsAPI
-    Classifier <--> GroqCloud
-    BudgetAgent <--> GroqCloud
-
-    Adapter -->|Structured JSON Itinerary| API
-    API -->|Rendered Plan| ItineraryView
+     Start:::journey
+     Choice:::decision
+     Cards:::journey
+     Draft:::journey
+     Customize:::journey
+     DraftGen:::backend
+     SwapAPI:::backend
+     AddAPI:::backend
+     Chat:::journey
+     SmartDraft:::journey
+     RefineChat:::journey
+     PlannerAgent:::agent
+     BudgetAgent:::agent
+     Tools:::external
+     Final:::journey
+    classDef journey fill:#FFF4E0,stroke:#E8A33D,stroke-width:1.5px,color:#5A3E1B
+    classDef frontend fill:#E7F0FF,stroke:#4A7FE8,stroke-width:1.5px,color:#1B3A6B
+    classDef backend fill:#E9F9EE,stroke:#3DBE6B,stroke-width:1.5px,color:#1B5C33
+    classDef agent fill:#F3E8FF,stroke:#9B5DE5,stroke-width:1.5px,color:#4A1E7A
+    classDef external fill:#FFE8ED,stroke:#E84A6B,stroke-width:1.5px,color:#6B1B2E
+    classDef decision fill:#FFFFFF,stroke:#666666,stroke-width:1.5px,color:#333333
 ```
 
 ---
@@ -243,10 +238,3 @@ The application will launch at `http://localhost:5173`.
 | `POST` | `/apply-optimization` | Recalculates and persists applied budget/stay adjustments |
 | `GET` | `/saved-itinerary` | Retrieves the most recently persisted session plan |
 
----
-
-## 👩‍💻 Author
-
-**Pratishtha Sharma**  
-- Portfolio / Contact: Pratishtha  
-- Project: Beyond Travel Technologies  
