@@ -104,7 +104,7 @@ body {
   transition: opacity 0.5s ease, transform 0.5s ease;
 }
 
-/* ── Slot Card Strip (thin sleek time-of-day bar) ─────────────── */
+/* Slot Card Strip (thin sleek time-of-day bar) */
 .slot-card-strip {
   display: flex;
   gap: 8px;

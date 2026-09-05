@@ -692,7 +692,7 @@ function DestinationPage({ selectedDestination, onPlan }: { selectedDestination:
   );
 }
 
-/* ─── Undo Toast ─────────────────────────────────────────────────────────── */
+/* Undo Toast */
 
 interface UndoToast {
   id: string;
@@ -733,7 +733,7 @@ function UndoToastContainer({ toasts, onDismiss }: { toasts: UndoToast[]; onDism
   );
 }
 
-/* ─── Reschedule Picker ──────────────────────────────────────────────────── */
+/* Reschedule Picker */
 
 function ReschedulePicker({
   currentSlot,
@@ -791,7 +791,7 @@ function ReschedulePicker({
   );
 }
 
-/* ─── Swap Drawer ────────────────────────────────────────────────────────── */
+/* Swap Drawer */
 
 function SwapDrawer({
   activity,
@@ -941,7 +941,7 @@ function SwapDrawer({
   );
 }
 
-/* ─── Activity Card ──────────────────────────────────────────────────────── */
+/* Activity Card */
 
 function ActivityCard({
   activity,
@@ -1085,7 +1085,7 @@ function ActivityCard({
   );
 }
 
-/* ─── Add Activity Drawer ────────────────────────────────────────────────── */
+/* Add Activity Drawer */
 
 function AddActivityDrawer({
   slot,
@@ -1243,7 +1243,7 @@ function AddActivityDrawer({
   );
 }
 
-/* ─── Expandable Day Cards for Itinerary ─────────────────────────────────── */
+/* Expandable Day Cards for Itinerary */
 
 function DayCardList({
   days,
@@ -1758,7 +1758,7 @@ function ItineraryPage({ itinerary }: { itinerary: TripPlanResponse | null }) {
         party_type: resolvedItinerary.request.party_type,
       });
 
-      // ── Budget optimization: show confirmation card, don't auto-mutate ────
+      // Budget optimization: show confirmation card, don't auto-mutate
       if (result.intent === 'budget_optimization' && result.optimization_confirmation?.requires_confirmation) {
         setOptimizationConfirmation(result.optimization_confirmation);
         setModifyToast({
@@ -1769,7 +1769,7 @@ function ItineraryPage({ itinerary }: { itinerary: TripPlanResponse | null }) {
         return;
       }
 
-      // ── Unsupported / out-of-scope query: show warning toast, preserve existing itinerary ────
+      // Unsupported / out-of-scope query: show warning toast, preserve existing itinerary
       if (result.intent === 'unsupported_query') {
         setModifyToast({
           type: 'error',
@@ -1779,7 +1779,7 @@ function ItineraryPage({ itinerary }: { itinerary: TripPlanResponse | null }) {
         return;
       }
 
-      // ── Show error toast if any live API failed ───────────────────────────
+      // Show error toast if any live API failed
       if (result.api_errors && result.api_errors.length > 0) {
         setModifyToast({
           type: 'error',
@@ -1852,6 +1852,15 @@ function ItineraryPage({ itinerary }: { itinerary: TripPlanResponse | null }) {
           const priceVal = trans.price_per_person || trans.price;
           const totalVal = trans.total_price || (priceVal ? priceVal * resolvedItinerary.request.number_of_people : null);
 
+          const isTrainOrBus = modeLower.includes('train') || modeLower.includes('rail') || modeLower.includes('bus');
+          const originCity = trans.origin || 'Origin';
+          // If multiple destinations are listed (e.g. "Varanasi, Rishikesh, Haridwar"), pick the first one for transit
+          const rawDest = trans.destination || resolvedItinerary.request.destination || '';
+          const primaryDest = rawDest.split(/[,;/]|\s+and\s+|\s+&\s+/i)[0]?.trim() || rawDest;
+          const transitHeading = isTrainOrBus
+            ? `${originCity} to ${primaryDest} ${modeLabel}`
+            : (trans.airline || trans.provider || `${modeLabel} Transit`) + (trans.identifier ? ` • ${trans.identifier}` : '');
+
           return (
             <div className="mb-6 rounded-[1.5rem] border border-[#a2c9b2] bg-gradient-to-br from-[#ffffff] via-[#f7fbf8] to-[#edf6f0] p-5 sm:p-6 shadow-sm">
               <div className="flex flex-wrap items-center justify-between gap-2 mb-4 border-b border-[#dfeae2] pb-3">
@@ -1869,8 +1878,7 @@ function ItineraryPage({ itinerary }: { itinerary: TripPlanResponse | null }) {
                       </span>
                     </div>
                     <h3 className="text-base sm:text-lg font-bold text-slate-800">
-                      {trans.airline || trans.provider || `${modeLabel} Transit`}
-                      {trans.identifier ? ` • ${trans.identifier}` : ''}
+                      {transitHeading}
                     </h3>
                   </div>
                 </div>
@@ -1926,7 +1934,7 @@ function ItineraryPage({ itinerary }: { itinerary: TripPlanResponse | null }) {
                       </div>
                     )}
                     <div className="text-[11px] font-semibold text-[#2d5a47]">
-                      {trans.destination || resolvedItinerary.request.destination}
+                      {isTrainOrBus ? primaryDest : (trans.destination || resolvedItinerary.request.destination)}
                     </div>
                   </div>
                 </div>
@@ -1940,7 +1948,7 @@ function ItineraryPage({ itinerary }: { itinerary: TripPlanResponse | null }) {
                         <span>Self-Drive / Personal Vehicle</span>
                       </div>
                       <a
-                        href={`https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(trans.origin || 'Mumbai')}&destination=${encodeURIComponent(trans.destination || resolvedItinerary.request.destination)}`}
+                        href={`https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(trans.origin || 'Mumbai')}&destination=${encodeURIComponent(primaryDest || resolvedItinerary.request.destination)}`}
                         target="_blank"
                         rel="noreferrer"
                         className="flex items-center justify-center gap-1 w-full py-1 text-[11px] font-semibold text-[#2d5a47] hover:underline cursor-pointer"
@@ -2058,109 +2066,7 @@ function ItineraryPage({ itinerary }: { itinerary: TripPlanResponse | null }) {
           </div>
         )}
 
-        {/* General Planner Story & Cultural Modules (Preserved from prior build trip design) */}
-        {!isPlannerAgent && (
-          <>
-            {/* Story Overview */}
-            {overview && (
-              <div className="mb-6 rounded-[1.2rem] border border-[#b8d4c1] bg-gradient-to-br from-[#eaf4ed] to-[#f4f9f5] p-5 shadow-sm">
-                <div className="mb-2 text-[#2d5a47] font-semibold text-sm">
-                  Destination Story & Vibe
-                </div>
-                <p className="text-base sm:text-lg leading-relaxed text-[#234537] italic font-serif">{sanitizeText(overview)}</p>
-              </div>
-            )}
 
-            {/* Fun Facts & Trivia Card Grid */}
-            {fun_facts && fun_facts.length > 0 && (
-              <div className="mb-6 rounded-[1.2rem] border border-[#d2e4d7] bg-white p-5 shadow-sm">
-                <h3 className="mb-3 text-base sm:text-lg font-bold text-[#244b3d]">
-                  Did You Know? Fun Facts & Trivia
-                </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {fun_facts.map((fact, idx) => (
-                    <div key={idx} className="rounded-xl border border-[#e4eee7] bg-[#f9fcfa] p-3 text-sm sm:text-[15px] leading-relaxed text-slate-700 flex items-start gap-2">
-                      <span className="text-[#2d5a47] font-bold">#{idx + 1}</span>
-                      <span>{sanitizeText(fact)}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Must Try Food & Culinary Highlights */}
-            {must_try_food && must_try_food.length > 0 && (
-              <div className="mb-6 rounded-[1.2rem] border border-[#e2d5c3] bg-gradient-to-r from-[#fcf8f2] to-[#f9f5ed] p-5 shadow-sm">
-                <h3 className="mb-3 text-base sm:text-lg font-bold text-[#5c3e1e]">
-                  Must-Try Local Cuisine & Dishes
-                </h3>
-                <div className="space-y-2">
-                  {must_try_food.map((dish, idx) => (
-                    <div key={idx} className="flex items-start gap-2 rounded-lg border border-[#ede2d3] bg-white/80 p-2.5 text-sm sm:text-[15px] text-[#4a341b]">
-                      <span className="text-amber-600 font-bold">•</span>
-                      <span>{sanitizeText(dish)}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Hidden Gems & Culture & Travel Hacks Grid */}
-            <div className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-4">
-              {hidden_gems && hidden_gems.length > 0 && (
-                <div className="rounded-[1.2rem] border border-[#cde0d3] bg-white p-4 shadow-sm">
-                  <h4 className="mb-2.5 text-sm sm:text-base font-bold text-[#244b3d]">
-                    Hidden Gems & Offbeat Spots
-                  </h4>
-                  <ul className="space-y-2 text-sm sm:text-[15px] text-slate-700">
-                    {hidden_gems.map((gem, idx) => (
-                      <li key={idx} className="flex items-start gap-2">
-                        <span className="text-[#2d5a47]">•</span>
-                        <span>{sanitizeText(gem)}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              {(local_culture || travel_hacks) && (
-                <div className="rounded-[1.2rem] border border-[#cde0d3] bg-white p-4 shadow-sm">
-                  {local_culture && (
-                    <div className="mb-3">
-                      <h4 className="mb-1.5 text-sm sm:text-base font-bold text-[#244b3d]">
-                        Local Culture & Etiquette
-                      </h4>
-                      <p className="text-sm sm:text-[15px] leading-relaxed text-slate-700">{sanitizeText(local_culture)}</p>
-                    </div>
-                  )}
-
-                  {travel_hacks && travel_hacks.length > 0 && (
-                    <div>
-                      <h4 className="mb-1.5 text-sm sm:text-base font-bold text-[#244b3d]">
-                        Insider Travel Hacks
-                      </h4>
-                      <ul className="space-y-1.5 text-sm sm:text-[15px] text-slate-700">
-                        {travel_hacks.map((hack, idx) => (
-                          <li key={idx} className="flex items-start gap-2">
-                            <span className="text-amber-600">✓</span>
-                            <span>{sanitizeText(hack)}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-
-            {budget_info && (
-              <div className="mb-6 rounded-xl border border-[#cfe1d4] bg-[#eaf4ed] p-3.5 text-sm sm:text-[15px] text-[#244b3d] flex items-center gap-2">
-                <span className="font-bold">Budget Advice:</span>
-                <span>{sanitizeText(budget_info)}</span>
-              </div>
-            )}
-          </>
-        )}
 
         {/* Day-by-Day Experience — Collapsible Cards */}
         <h2 className="mb-4 text-xl sm:text-2xl font-bold font-serif text-[#274b3d]">Day-by-Day Experience</h2>
@@ -2187,7 +2093,7 @@ function ItineraryPage({ itinerary }: { itinerary: TripPlanResponse | null }) {
               </div>
             </div>
 
-            {/* ── Optimization Confirmation Card ─────────────────────────── */}
+            {/* Optimization Confirmation Card */}
             {optimizationConfirmation?.requires_confirmation && (
               <div className="mb-3 rounded-2xl border border-[#2d5a47]/30 bg-gradient-to-br from-[#edf6ef] to-[#f4fbf5] p-4 shadow-md">
                 <div className="flex items-start justify-between mb-3">
@@ -2249,7 +2155,11 @@ function ItineraryPage({ itinerary }: { itinerary: TripPlanResponse | null }) {
                                 <span className="ml-auto text-[9px] text-slate-400 italic">est.</span>
                               )}
                             </div>
-                            <p className="text-[10px] text-slate-500 truncate">{alt.provider}</p>
+                            <p className="text-[10px] text-slate-500 truncate">
+                              {alt.mode.toLowerCase().includes('train') || alt.mode.toLowerCase().includes('bus')
+                                ? `${resolvedItinerary.best_flight?.origin || 'Origin'} to ${resolvedItinerary.request.destination.split(/[,;/]|\s+and\s+|\s+&\s+/i)[0]?.trim() || resolvedItinerary.request.destination} ${alt.mode}`
+                                : alt.provider}
+                            </p>
                             <div className="flex items-center justify-between">
                               <span className="text-sm font-bold text-slate-800">₹{alt.new_cost.toLocaleString('en-IN')}</span>
                               {alt.savings > 0 && (
@@ -2342,7 +2252,7 @@ function ItineraryPage({ itinerary }: { itinerary: TripPlanResponse | null }) {
   );
 }
 
-/* ─── Footer ─────────────────────────────────────────────────────────────── */
+/* Footer */
 
 function Footer() {
   return (

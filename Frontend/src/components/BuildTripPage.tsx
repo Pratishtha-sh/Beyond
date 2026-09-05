@@ -16,7 +16,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { chatPlan } from '../services/api';
 
-/* ─── Types ─────────────────────────────────────────────────────────────── */
+/* Types */
 
 interface ChatMessage {
   id: string;
@@ -31,7 +31,7 @@ interface QuickFilters {
   transport: string;
 }
 
-/* ─── Constants ─────────────────────────────────────────────────────────── */
+/* Constants */
 
 const HOTEL_OPTIONS = ['Budget / Hostel', 'Mid-range', 'Boutique', 'Luxury / Resort'];
 const BUDGET_OPTIONS = ['< ₹5K / day', '₹5K – ₹15K', '₹15K – ₹30K', '₹30K+'];
@@ -42,7 +42,7 @@ const TRANSPORT_OPTIONS = [
   { label: 'Self-drive', icon: Car },
 ];
 
-/* ─── Chip ───────────────────────────────────────────────────────────────── */
+/* Chip */
 
 function Chip({
   label,
@@ -70,7 +70,7 @@ function Chip({
   );
 }
 
-/* ─── FilterCard ─────────────────────────────────────────────────────────── */
+/* FilterCard */
 
 function FilterCard({
   icon: Icon,
@@ -94,7 +94,7 @@ function FilterCard({
   );
 }
 
-/* ─── Typing / Planning Indicator ────────────────────────────────────────── */
+/* Typing / Planning Indicator */
 
 function TypingIndicator({ status }: { status?: string }) {
   return (
@@ -112,7 +112,7 @@ function TypingIndicator({ status }: { status?: string }) {
   );
 }
 
-/* ─── Message Bubble ─────────────────────────────────────────────────────── */
+/* Message Bubble */
 
 function MessageBubble({ msg }: { msg: ChatMessage }) {
   const isUser = msg.role === 'user';
@@ -145,7 +145,7 @@ function MessageBubble({ msg }: { msg: ChatMessage }) {
   );
 }
 
-/* ─── Starter Suggestions ─────────────────────────────────────────────────── */
+/* Starter Suggestions */
 
 const STARTER_PROMPTS = [
   '🏖️ 5-day relaxing beach getaway in South Goa with seafood & sunset cruises',
@@ -154,7 +154,7 @@ const STARTER_PROMPTS = [
   '🕉️ 6-day spiritual & cultural journey through Varanasi, Rishikesh & Haridwar',
 ];
 
-/* ─── Main Component ─────────────────────────────────────────────────────── */
+/* Main Component */
 
 export default function BuildTripPage() {
   const navigate = useNavigate();
@@ -290,7 +290,7 @@ export default function BuildTripPage() {
 
   return (
     <div className="flex flex-col min-h-[calc(100vh-72px)] bg-gradient-to-b from-[#eaf5ee] via-[#f4faf6] to-[#fef9f4]">
-      {/* ── Page Header ── */}
+      {/* Page Header */}
       <div className="hero-stripes relative overflow-hidden border-b border-[#cfe1d4]/60">
         <div className="bg-white/25 backdrop-blur-[2px] px-6 py-5 md:py-6">
           <div className="mx-auto max-w-4xl">
@@ -315,9 +315,9 @@ export default function BuildTripPage() {
         </div>
       </div>
 
-      {/* ── Main Chat Area ── */}
+      {/* Main Chat Area */}
       <div className="mx-auto w-full max-w-4xl px-4 sm:px-6 lg:px-8 py-6 flex flex-col gap-6 flex-1">
-        {/* ── Quick Filter Cards ── */}
+        {/* Quick Filter Cards */}
         <div className="flex gap-3 flex-wrap">
           <FilterCard icon={Hotel} title="Hotel Type">
             {HOTEL_OPTIONS.map((opt) => (
@@ -354,7 +354,7 @@ export default function BuildTripPage() {
           </FilterCard>
         </div>
 
-        {/* ── Starter Prompts (Shown when no messages yet) ── */}
+        {/* Starter Prompts (Shown when no messages yet) */}
         {messages.length === 0 && !isTyping && (
           <div className="mt-2 space-y-3">
             <p className="text-xs font-bold uppercase tracking-wider text-[#2d5a47]/70">
@@ -374,7 +374,7 @@ export default function BuildTripPage() {
           </div>
         )}
 
-        {/* ── Conversation Stream ── */}
+        {/* Conversation Stream */}
         {(messages.length > 0 || isTyping) && (
           <div className="flex flex-col gap-4 py-2">
             <AnimatePresence initial={false}>
@@ -397,7 +397,7 @@ export default function BuildTripPage() {
         )}
       </div>
 
-      {/* ── Sticky ChatGPT-Style Input Container ── */}
+      {/* Sticky ChatGPT-Style Input Container */}
       <div className="sticky bottom-0 z-30 w-full bg-gradient-to-t from-[#fef9f4] via-[#fef9f4]/95 to-transparent backdrop-blur-[4px] pt-4 pb-5 px-4 sm:px-6 lg:px-8 border-t border-[#cfe1d4]/40 shadow-[0_-8px_24px_rgba(45,90,71,0.03)]">
         <div className="mx-auto max-w-4xl">
           {/* Active filter pills */}
@@ -480,7 +480,7 @@ export default function BuildTripPage() {
         </div>
       </div>
 
-      {/* ── Missing Origin Dialog Pop-up Modal ── */}
+      {/* Missing Origin Dialog Pop-up Modal */}
       <AnimatePresence>
         {showOriginModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs">

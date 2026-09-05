@@ -21,7 +21,7 @@ if hasattr(sys.stdout, "reconfigure"):
     except Exception:
         pass
 
-# Local paths & Tool imports
+# ── Local paths & Tool imports ───────────────────────────────────────────────
 BACKEND_DIR = Path(__file__).resolve().parent.parent
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
@@ -67,7 +67,10 @@ if GROQ_API_KEY:
 
 LLM_MODEL = "openai/gpt-oss-120b"
 
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Data Models & Schemas
+# ─────────────────────────────────────────────────────────────────────────────
 
 @dataclass
 class BudgetAllocation:
@@ -82,6 +85,7 @@ class BudgetAllocation:
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
 
+
 @dataclass
 class ExpenseItem:
     category: str  # "accommodation", "transport", "activities", "food_misc"
@@ -91,6 +95,7 @@ class ExpenseItem:
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
+
 
 @dataclass
 class OptimizationAlternative:
@@ -105,6 +110,7 @@ class OptimizationAlternative:
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
+
 
 @dataclass
 class BudgetResponse:
@@ -128,7 +134,10 @@ class BudgetResponse:
         res = asdict(self)
         return res
 
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Emergency Offline Fallback Estimates (Used ONLY when live APIs are unreachable)
+# ─────────────────────────────────────────────────────────────────────────────
 FALLBACK_COST_ESTIMATES = {
     "transport": {
         "flight": {"min_per_person_roundtrip": 4500.0, "avg_roundtrip": 8500.0},
@@ -156,7 +165,10 @@ FALLBACK_COST_ESTIMATES = {
     },
 }
 
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Helper Utilities
+# ─────────────────────────────────────────────────────────────────────────────
 
 def _clean_budget_tier(budget_val: Any) -> float:
     """Parse numeric budget or standard UI tier strings into a per-day numeric value."""
@@ -182,6 +194,7 @@ def _clean_budget_tier(budget_val: Any) -> float:
     
     return 5000.0
 
+
 def _normalize_transport_type(ttype: str) -> str:
     t = (ttype or "").strip().lower()
     if "flight" in t or "air" in t:
@@ -194,6 +207,7 @@ def _normalize_transport_type(ttype: str) -> str:
         return "self-drive"
     return "flight"
 
+
 def _normalize_hotel_type(htype: str) -> str:
     h = (htype or "").strip().lower()
     if "hostel" in h or "budget" in h:
@@ -203,6 +217,7 @@ def _normalize_hotel_type(htype: str) -> str:
     elif "luxury" in h or "resort" in h or "5 star" in h or "5-star" in h:
         return "luxury / resort"
     return "mid-range"
+
 
 def _call_llm(system: str, user: str, temperature: float = 0.2) -> Optional[str]:
     """Safe call to Groq LLM with fallback."""
@@ -222,7 +237,10 @@ def _call_llm(system: str, user: str, temperature: float = 0.2) -> Optional[str]
         logger.warning(f"LLM call error: {e}")
         return None
 
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Budget Agent Implementation
+# ─────────────────────────────────────────────────────────────────────────────
 
 class BudgetAgent:
     """
@@ -271,7 +289,7 @@ class BudgetAgent:
             or "luxury" in (query or "").lower()
         )
 
-        # 1. LLM-Driven Dynamic Budget Allocation
+    
         allocation, rationale = self._llm_allocate_budget(
             days=days,
             total_budget=total_budget,
@@ -286,7 +304,6 @@ class BudgetAgent:
             query=query,
         )
 
-        # 2. Feasibility Check with Live APIs
         is_feasible, alert_msg, recommendations, api_errors = self._check_feasibility(
             destination=destination,
             days=days,
@@ -302,7 +319,7 @@ class BudgetAgent:
             travel_date=travel_date,
         )
 
-        # 3. LLM Polish for user-facing feedback (if infeasible)
+        # 3. LLM Polish for user-facing feedback (if infeasible) 
         if not is_feasible and groq_client:
             llm_system = (
                 "You are an empathetic, intelligent travel budget expert for the Beyond app. "
@@ -549,7 +566,7 @@ class BudgetAgent:
         target_hotel_per_night = target_hotel_total / days
         target_transport_total = allotted_budget * 0.28
 
-        # Step A: Optimize Transport
+        # ── Step A: Optimize Transport ────────────────────────────────────────
         if (
             current_transport_cost > target_transport_total
             or "transport" in user_query.lower()
@@ -576,7 +593,7 @@ class BudgetAgent:
                     f"saving ₹{opt_trans.savings:,.0f}."
                 )
 
-        # Step B: Optimize Hotel
+        # ── Step B: Optimize Hotel ────────────────────────────────────────────
         if (
             current_hotel_cost > target_hotel_total
             or "hotel" in user_query.lower()
@@ -602,7 +619,7 @@ class BudgetAgent:
                     f"saving ₹{opt_hotel.savings:,.0f}."
                 )
 
-        # Step C: Optimize Activities
+        # ── Step C: Optimize Activities ───────────────────────────────────────
         if (
             current_activities_cost > (allotted_budget * 0.15)
             or "activities" in user_query.lower()
@@ -620,7 +637,7 @@ class BudgetAgent:
                     f"({opt_activities.suggested_alternative}), saving ₹{opt_activities.savings:,.0f}."
                 )
 
-        # Real Optimization Total (NO ARTIFICIAL 85% FLOOR)
+        # ── Real Optimization Total (NO ARTIFICIAL 85% FLOOR) ──────────────────
         total_savings = sum(a.savings for a in alternatives_found)
         new_projected_cost = round(max(0.0, total_current_cost - total_savings), 2)
         is_now_feasible = new_projected_cost <= (allotted_budget * 1.05)
@@ -680,7 +697,9 @@ class BudgetAgent:
             },
         )
 
+    # ─────────────────────────────────────────────────────────────────────────
     # Tool Integration Helpers
+    # ─────────────────────────────────────────────────────────────────────────
 
     def _find_transport_alternatives(
         self,
@@ -704,7 +723,7 @@ class BudgetAgent:
         all_alternatives: List[Dict[str, Any]] = []
         api_errors: List[str] = []
 
-        # Live Search for Train and Bus
+        # ── Live Search for Train and Bus ─────────────────────────────────────
         for alt_mode in alt_modes_to_search:
             o_code = origin_code or self._guess_station_or_airport_code(origin, alt_mode)
             d_code = destination_code or self._guess_station_or_airport_code(destination, alt_mode)
@@ -758,7 +777,7 @@ class BudgetAgent:
                     "estimated": True,
                 })
 
-        # Self-drive estimate (always marked estimated)
+        # ── Self-drive estimate (always marked estimated) ─────────────────────
         if orig_mode != "self-drive":
             fuel_toll_per_km = 6.0
             avg_distance_km = 400
@@ -912,7 +931,9 @@ class BudgetAgent:
             details={"free_or_low_cost_places": free_places},
         )
 
+    # ─────────────────────────────────────────────────────────────────────────
     # Live Feasibility Validator
+    # ─────────────────────────────────────────────────────────────────────────
     def _check_feasibility(
         self,
         destination: str,
@@ -936,7 +957,7 @@ class BudgetAgent:
         recommendations: List[str] = []
         api_errors: List[str] = []
 
-        # 1. Live Transport Price Check
+        # ── 1. Live Transport Price Check ─────────────────────────────────────
         real_trans_price: Optional[float] = None
         trans_is_fallback = False
 
@@ -972,7 +993,7 @@ class BudgetAgent:
             unit_p = base.get("min_per_person_roundtrip", 3000.0)
             real_trans_price = unit_p * num_people
 
-        # 2. Live Hotel Price Check
+        # ── 2. Live Hotel Price Check ─────────────────────────────────────────
         real_hotel_total: Optional[float] = None
         hotel_is_fallback = False
 
@@ -1026,13 +1047,13 @@ class BudgetAgent:
             min_night = base_h.get("min_per_night", 1500.0)
             real_hotel_total = min_night * days
 
-        # 3. Realistic Subsistence (Dining + Local Commute)
+        # ── 3. Realistic Subsistence (Dining + Local Commute) ──────────────────
         est_food_daily = 700.0 * num_people
         est_commute_daily = 400.0
         est_subsistence_total = (est_food_daily + est_commute_daily) * days
         est_activities = max(1000.0, allocation.activities_sightseeing * 0.5)
 
-        # 4. True Required Budget & Deficit Calculation
+        # ── 4. True Required Budget & Deficit Calculation ─────────────────────
         required_total = round(
             real_trans_price + real_hotel_total + est_subsistence_total + est_activities,
             2,
@@ -1103,7 +1124,10 @@ class BudgetAgent:
             }
             return codes.get(c, "NDLS")
 
+
+# ─────────────────────────────────────────────────────────────────────────────
 # General Entry Point
+# ─────────────────────────────────────────────────────────────────────────────
 
 def run_budget_agent(payload: Dict[str, Any]) -> Dict[str, Any]:
     """

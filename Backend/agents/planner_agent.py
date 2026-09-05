@@ -689,7 +689,21 @@ def node_fetch_transport(state: PlannerState) -> PlannerState:
     days = state.get("days", 3)
     transport_budget = round(budget_per_day * days * 0.30, 2)
 
-    logger.info(f"[Step 3] Searching transport {trans_mode} from {origin} to {dest}...")
+    # If multiple destinations are given (e.g. "Varanasi, Rishikesh, Haridwar" or "Jaipur, Udaipur & Jodhpur"),
+    # pick the first one as the primary transit destination to search transport for.
+    import re
+    primary_dest = dest
+    if dest:
+        places = state.get("places_covered")
+        if isinstance(places, list) and places:
+            primary_dest = str(places[0]).strip()
+        else:
+            parts = re.split(r'[,;/]|\s+and\s+|\s+&\s+', dest.strip())
+            parts = [p.strip() for p in parts if p.strip()]
+            if parts:
+                primary_dest = parts[0]
+
+    logger.info(f"[Step 3] Searching transport {trans_mode} from {origin} to {primary_dest} (full dest: {dest})...")
 
     def _code_for_city(city: str, mode: str) -> str:
         c = (city or "").lower()
@@ -697,16 +711,19 @@ def node_fetch_transport(state: PlannerState) -> PlannerState:
             codes = {"mumbai": "BOM", "delhi": "DEL", "goa": "GOI", "bangalore": "BLR",
                      "jaipur": "JAI", "chennai": "MAA", "kolkata": "CCU", "hyderabad": "HYD",
                      "pune": "PNQ", "kochi": "COK", "ahmedabad": "AMD", "srinagar": "SXR",
-                     "leh": "IXL", "udaipur": "UDR", "jodhpur": "JDH", "varanasi": "VNS"}
+                     "leh": "IXL", "udaipur": "UDR", "jodhpur": "JDH", "varanasi": "VNS",
+                     "amritsar": "ATQ", "chandigarh": "IXC", "lucknow": "LKO", "dehradun": "DED"}
             return codes.get(c, "DEL")
         else:
             codes = {"mumbai": "CSMT", "delhi": "NDLS", "goa": "MAO", "bangalore": "SBC",
                      "jaipur": "JP", "chennai": "MAS", "kolkata": "HWH", "hyderabad": "HYB",
-                     "pune": "PUNE", "kochi": "ERS", "ahmedabad": "ADI", "varanasi": "BSB"}
+                     "pune": "PUNE", "kochi": "ERS", "ahmedabad": "ADI", "varanasi": "BSB",
+                     "haridwar": "HW", "rishikesh": "RKSH", "agra": "AGC", "amritsar": "ASR",
+                     "chandigarh": "CDG", "udaipur": "UDZ", "jodhpur": "JU", "lucknow": "LKO"}
             return codes.get(c, "NDLS")
 
     o_code = state.get("origin_code") or _code_for_city(origin, trans_mode)
-    d_code = state.get("destination_code") or _code_for_city(dest, trans_mode)
+    d_code = state.get("destination_code") or _code_for_city(primary_dest, trans_mode)
 
     transport_results = []
 
@@ -717,7 +734,7 @@ def node_fetch_transport(state: PlannerState) -> PlannerState:
                 "transport_type": trans_mode,
                 "origin": origin,
                 "origin_code": o_code,
-                "destination": dest,
+                "destination": primary_dest,
                 "destination_code": d_code,
                 "travel_date": state.get("start_date", date.today().strftime("%Y-%m-%d")),
                 "budget": max(800, int(transport_budget / max(num_people * 2, 1))),
@@ -731,9 +748,9 @@ def node_fetch_transport(state: PlannerState) -> PlannerState:
     # — Tavily enrichment: fill missing price or all info when results are empty —
     if not transport_results or not any(r.get("price") for r in transport_results):
         tavily_query = (
-            f"cheapest {trans_mode} from {origin} to {dest} price INR 2024"
+            f"cheapest {trans_mode} from {origin} to {primary_dest} price INR 2024"
             if trans_mode != "self-drive"
-            else f"road trip {origin} to {dest} distance fuel cost INR"
+            else f"road trip {origin} to {primary_dest} distance fuel cost INR"
         )
         tavily_hits = _tavily_search(tavily_query, max_results=5)
 
@@ -743,12 +760,18 @@ def node_fetch_transport(state: PlannerState) -> PlannerState:
             combined_text = " ".join(h.get("content", "") for h in tavily_hits)
             tavily_price = _extract_price_from_text(combined_text)
 
+            provider_name = (
+                f"{origin} to {primary_dest} {trans_mode.capitalize()}"
+                if trans_mode in ("train", "bus")
+                else best_hit.get("title", f"{trans_mode.capitalize()} from {origin}")
+            )
+
             transport_results = [{
                 "mode": trans_mode.capitalize(),
-                "provider": best_hit.get("title", f"{trans_mode.capitalize()} from {origin}"),
+                "provider": provider_name,
                 "identifier": "",
                 "origin": origin,
-                "destination": dest,
+                "destination": primary_dest,
                 "departure_time": None,
                 "arrival_time": None,
                 "duration": None,
@@ -787,6 +810,12 @@ def node_fetch_transport(state: PlannerState) -> PlannerState:
                 t["booking_link"] = "https://www.irctc.co.in/nget/train-search"
             elif trans_mode == "bus":
                 t["booking_link"] = "https://www.redbus.in"
+
+        # Generic clean title for train and bus instead of web search results
+        if t.get("mode", "").lower() in ("train", "bus"):
+            t_orig = t.get("origin") or origin
+            t_dest = t.get("destination") or primary_dest
+            t["provider"] = f"{t_orig} to {t_dest} {t['mode']}"
 
     best_transport = transport_results[0] if transport_results else None
     state["transport_options"] = transport_results
